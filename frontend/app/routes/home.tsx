@@ -31,7 +31,9 @@ export default function Home() {
       <Card className="max-w-md">
         <CardHeader>
           <CardTitle>Lyphe</CardTitle>
-          <CardDescription>Signed in as {user?.name || user?.email}</CardDescription>
+          <CardDescription>
+            Signed in as <span className="font-content">{user?.name || user?.email}</span>
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex gap-2">
           <Button>Goals</Button>
