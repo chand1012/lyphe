@@ -1,3 +1,4 @@
+import { redirect, useNavigate } from "react-router";
 import type { Route } from "./+types/home";
 import { Button } from "~/components/ui/button";
 import {
@@ -7,6 +8,12 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/ui/card";
+import { pb } from "~/lib/pocketbase";
+import { useAuth } from "~/lib/auth";
+
+export async function clientLoader({}: Route.ClientLoaderArgs) {
+  if (!pb.authStore.isValid) throw redirect("/login");
+}
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -16,16 +23,28 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function Home() {
+  const user = useAuth();
+  const navigate = useNavigate();
+
   return (
     <main className="mx-auto grid min-h-screen place-items-center p-4 container">
       <Card className="max-w-md">
         <CardHeader>
           <CardTitle>Lyphe</CardTitle>
-          <CardDescription>Example shadcn page.</CardDescription>
+          <CardDescription>Signed in as {user?.name || user?.email}</CardDescription>
         </CardHeader>
         <CardContent className="flex gap-2">
           <Button>Goals</Button>
           <Button variant="outline">Journal</Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              pb.authStore.clear();
+              navigate("/login");
+            }}
+          >
+            Sign out
+          </Button>
         </CardContent>
       </Card>
     </main>

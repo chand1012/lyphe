@@ -15,6 +15,7 @@
     "cn": "^0.4.0",
     "isbot": "^5.1.36",
     "lucide-react": "^1.49.0",
+    "pocketbase": "^0.28.1",
     "radix-ui": "^1.6.7",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

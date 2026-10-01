@@ -12,3 +12,15 @@ default:
 build:
   cd frontend && bun run build
   go build -ldflags "{{LD_FLAGS}}" -v -o bin/lyphe{{EXEC_EXT}}
+
+serve-backend:
+  go run main.go serve
+
+serve-frontend:
+  #!/bin/bash
+  cd frontend
+  bun run dev
+  cd ..
+
+dev:
+  overmind start
