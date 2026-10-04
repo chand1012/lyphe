@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	github.com/pocketbase/pocketbase v0.40.4
 	github.com/spf13/cobra v1.10.2
+	github.com/tetratelabs/wazero v1.12.0
 )
 
 require (

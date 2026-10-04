@@ -5,6 +5,7 @@ bin/whistle/*
 !bin/whistle/needle.wasm
 !bin/whistle/manifest.json
 !bin/whistle/LICENSE
+models/
 !bin/whistle/whistle.cact
 
 !bin/whistle/README.md

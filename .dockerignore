@@ -15,7 +15,6 @@
 **/*.log
 .overmind.sock
 bin/*
-!bin/llamafile
 !bin/whistle/
 bin/whistle/*
 !bin/whistle/needle.wasm
@@ -24,3 +23,6 @@ bin/whistle/*
 !bin/whistle/whistle.cact
 
 !bin/whistle/README.md
+
+models/*
+!models/SmolLM2-135M.Q8_0.llamafile

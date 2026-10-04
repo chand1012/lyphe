@@ -12,6 +12,8 @@ import (
 	"github.com/pocketbase/pocketbase/tools/osutils"
 	"github.com/spf13/cobra"
 
+	"github.com/chand1012/lyphe/internal/ai"
+	"github.com/chand1012/lyphe/internal/backend"
 	"github.com/chand1012/lyphe/internal/version"
 	_ "github.com/chand1012/lyphe/migrations"
 )
@@ -20,7 +22,9 @@ import (
 const defaultStaticPath = "frontend/build/client"
 
 func main() {
-	app := pocketbase.New()
+	app := pocketbase.NewWithConfig(pocketbase.Config{DefaultDataDir: "pb_data"})
+	backend.Register(app)
+	ai.Register(app)
 
 	app.RootCmd.AddCommand(&cobra.Command{
 		Use:   "version",
