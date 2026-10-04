@@ -93,6 +93,13 @@ The Go tests use temporary data directories. Development and production use the 
 
 ## Single-image Docker deployment
 
+GitHub Actions builds and publishes `ghcr.io/chand1012/lyphe` for Linux `amd64` and `arm64` on every push to `main`, on `v*` tags, and through manual workflow runs. Use `ghcr.io/chand1012/lyphe:latest` for the current main branch or `sha-<full-commit-sha>` for a specific build. Release tags are also published as image tags. The workflow downloads and verifies the completion model and uses the committed Whistle assets.
+
+```sh
+docker pull ghcr.io/chand1012/lyphe:latest
+docker run --rm --name lyphe -p 8090:8090 -v lyphe-data:/app/pb_data ghcr.io/chand1012/lyphe:latest
+```
+
 The root `Dockerfile` builds the SPA, a static Go binary, the completion model, the Whistle WASM engine and weights, and the FFmpeg tools into one non-root [distroless image](https://github.com/GoogleContainerTools/distroless). The final image has no shell, package manager, Node, Bun, or Python. CPU inference is included; GPU drivers and toolchains are not included.
 
 Run `just download-models` before building to ensure `models/SmolLM2-135M.Q8_0.llamafile` is present. Docker copies the checked-in Whistle core WASM engine (about 883 KiB) and 16.9 MB weights directly, verifying both against the committed SHA-256 manifest. Only `models/SmolLM2-135M.Q8_0.llamafile` and the committed Whistle engine, weights, manifest, and upstream license from `bin` enter the build context. Other model files and logs are excluded. The final image includes FFmpeg and FFprobe with their shared libraries, and the build checks that both tools execute successfully inside the distroless image. Databases, uploads, `.env` files, and local dependency directories are excluded. The build converts a copy of llamafile to a Linux ELF executable using its embedded architecture headers. The Whistle WASM engine is identical on both server architectures. The files on your host remain unchanged.
