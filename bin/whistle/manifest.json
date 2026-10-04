@@ -1,0 +1,7 @@
+{
+  "package": "cactus-needle==3.1.0",
+  "engine_source": "Cactus-Compute/needle3/wasm/needle.wasm",
+  "source_sha256": "c19b9ddf9c7de4eb4f37e5f1811c5bbea9f099041d2a27284daf89789ee8523d",
+  "wasm_sha256": "55e5bfb8983b345fe0d6ba171705235c0086a7ef9b1b8ccb11df4920edd43eec",
+  "weights_sha256": "b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb"
+}

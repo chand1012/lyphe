@@ -1,2 +1,10 @@
 pb_data
-bin/
+bin/*
+!bin/whistle/
+bin/whistle/*
+!bin/whistle/needle.wasm
+!bin/whistle/manifest.json
+!bin/whistle/LICENSE
+!bin/whistle/whistle.cact
+
+!bin/whistle/README.md
