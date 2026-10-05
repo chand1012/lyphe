@@ -290,7 +290,13 @@ func (s *Server) Update(ctx context.Context, p Principal, kind, id string, revis
 			return err
 		}
 		r = fresh
-		return indexEntity(app, fresh)
+		if err := indexEntity(app, fresh); err != nil {
+			return err
+		}
+		if _, changed := patch["tags"]; changed {
+			return pruneUnusedTags(app, p.UserID)
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err

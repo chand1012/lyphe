@@ -58,3 +58,42 @@ test('Undo restores typed Markdown instead of removing the author’s words', ()
   assert.equal(heading.children[0].type, 'p');
   assert.equal(NodeApi.string(heading.children[0]), '# ');
 });
+
+test('Tab changes hierarchy, preserves descendants, and can be undone', async () => {
+  const { indentList, listNumber } = await import('../app/lib/list.ts');
+  const editor = editorFor();
+  editor.tf.insertNodes([
+    { type: 'list-item', ordered: true, children: [{text: 'Parent'}] },
+    { type: 'list-item', ordered: true, children: [{text: 'Child'}] },
+    { type: 'list-item', ordered: true, indent: 1, children: [{text: 'Grandchild'}] },
+    { type: 'list-item', ordered: true, children: [{text: 'Sibling'}] },
+  ], {at: [1]});
+  editor.tf.select(editor.api.end([2]));
+  assert.equal(indentList(editor), true);
+  assert.deepEqual(editor.children.slice(1).map(n => n.indent ?? 0), [0, 1, 2, 0]);
+  assert.equal(listNumber(editor.children, 2), 1);
+  assert.equal(listNumber(editor.children, 4), 2);
+  editor.tf.undo();
+  assert.deepEqual(editor.children.slice(1).map(n => n.indent ?? 0), [0, 0, 1, 0]);
+  indentList(editor);
+  indentList(editor, true);
+  assert.deepEqual(editor.children.slice(1).map(n => n.indent ?? 0), [0, 0, 1, 0]);
+  editor.tf.select(editor.api.end([1]));
+  indentList(editor); // First item cannot indent without a parent.
+  assert.equal(editor.children[1].indent ?? 0, 0);
+  editor.tf.select(editor.api.end([0]));
+  assert.equal(indentList(editor), false);
+});
+
+test('Enter continues nested lists and outdents an empty nested item', async () => {
+  const editor = editorFor();
+  editor.tf.setNodes({type: 'list-item', indent: 1});
+  type(editor, 'Nested'); editor.tf.insertBreak();
+  assert.equal(editor.children[1].indent, 1);
+  editor.tf.insertBreak();
+  assert.equal(editor.children[1].type, 'list-item');
+  assert.equal(editor.children[1].indent, 0);
+  editor.tf.insertBreak();
+  assert.equal(editor.children[1].type, 'p');
+  assert.equal(editor.children[1].indent, 0);
+});

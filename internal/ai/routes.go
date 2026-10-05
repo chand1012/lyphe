@@ -72,7 +72,7 @@ func (m *Manager) completion(e *core.RequestEvent) error {
 	if m.cleanupWaiting.Load() > 0 || !canAutocomplete(input.Context) {
 		return e.JSON(200, map[string]string{"text": "", "requestId": input.RequestID})
 	}
-	ctx, cancel := context.WithTimeout(e.Request.Context(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(e.Request.Context(), 8*time.Second)
 	defer cancel()
 	var text string
 	verbatim := false
@@ -80,7 +80,7 @@ func (m *Manager) completion(e *core.RequestEvent) error {
 		text, err = provider.Autocomplete(ctx, input.Context)
 		verbatim = true
 	} else {
-		text, err = m.Provider.Complete(ctx, autocompletePrompt, input.Context, 12)
+		text, err = m.Provider.Complete(ctx, autocompletePrompt, input.Context, 32)
 	}
 	if err != nil {
 		return e.JSON(503, map[string]string{"code": "ai_unavailable", "message": "Autocomplete is temporarily unavailable"})

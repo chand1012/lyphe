@@ -25,4 +25,4 @@ bin/whistle/*
 !bin/whistle/README.md
 
 models/*
-!models/SmolLM2-135M.Q8_0.llamafile
+!models/smollm2-1.7b.llamafile

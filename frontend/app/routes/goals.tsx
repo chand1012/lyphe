@@ -1,16 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import type { Route } from "./+types/goals";
 import { Progress } from "~/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { EntityMenu } from "~/components/entity-menu";
 import { FilterPopover } from "~/components/filter-popover";
 import { EmptyState } from "~/components/empty-state";
 import { create, matchesFilters, useDb } from "~/lib/data";
-
-export function meta({}: Route.MetaArgs) {
-  return [{ title: "Goals · Lyphe" }];
-}
 
 export default function Goals() {
   const db = useDb();
