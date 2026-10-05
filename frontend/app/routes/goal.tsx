@@ -13,8 +13,9 @@ import { Separator } from "~/components/ui/separator";
 import { DocumentEditor } from "~/components/document-editor";
 import { EditableEntityTitle } from "~/components/editable-entity-title";
 import { EntityMenu } from "~/components/entity-menu";
+import { EntityRef } from "~/components/entity-ref";
 import { EmptyState } from "~/components/empty-state";
-import { useDb, update } from "~/lib/data";
+import { useDb, update, mentions } from "~/lib/data";
 
 export default function Goal({ params }: Route.ComponentProps) {
   const db = useDb();
@@ -25,6 +26,7 @@ export default function Goal({ params }: Route.ComponentProps) {
 
   const tasks = db.task.filter((t) => t.goalId === goal.id);
   const habits = db.habit.filter((h) => h.goalId === goal.id);
+  const journals = db.journal.filter((entry) => mentions(entry, "goal", goal.id));
   const linked = new Set([...tasks.map((t) => t.id), ...habits.map((h) => h.id)]);
   const suggestions = [...db.task, ...db.habit].filter((e) => !linked.has(e.id));
 
@@ -58,6 +60,14 @@ export default function Goal({ params }: Route.ComponentProps) {
       </div>
 
       <DocumentEditor key={goal.id} entity={goal} />
+
+      <Separator />
+
+      <p className="text-sm font-medium">Related Journals</p>
+      <div className="flex flex-wrap gap-1">
+        {journals.map((entry) => <EntityRef key={entry.id} kind="journal" id={entry.id} />)}
+        {!journals.length && <p className="text-sm text-muted-foreground">None yet</p>}
+      </div>
 
       <Separator />
 

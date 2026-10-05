@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import type { Route } from "./+types/journal";
 import { DocumentEditor } from "~/components/document-editor";
 import { EntityMenu } from "~/components/entity-menu";
+import { JournalLinks } from "~/components/journal-links";
 import { TagEditor } from "~/components/tag-editor";
 import { EmptyState } from "~/components/empty-state";
 import { longDate } from "~/lib/format";
@@ -25,6 +26,7 @@ export default function Journal({ params }: Route.ComponentProps) {
       </header>
 
       <TagEditor entity={entry} />
+      <JournalLinks entry={entry} />
 
       <DocumentEditor key={entry.id} entity={entry} audioFirst />
     </div>

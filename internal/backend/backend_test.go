@@ -1,14 +1,56 @@
 package backend
 
 import (
+	"fmt"
 	_ "github.com/chand1012/lyphe/migrations"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/router"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
+
+func TestJournalRelationsPersistAndRespectOwnership(t *testing.T) {
+	app := testApp(t)
+	user := record(t, app, "users", "journal-links")
+	other := record(t, app, "users", "other-links")
+	journal := record(t, app, "journal", user.Id)
+	goal := record(t, app, "goals", user.Id)
+	task := record(t, app, "tasks", user.Id)
+	foreign := record(t, app, "tasks", other.Id)
+	server := &Server{App: app}
+	patch := func(body string) error {
+		e, _ := request(app, user, "PATCH", "/api/entities/journal/"+journal.Id, body, map[string]string{"kind": "journal", "id": journal.Id})
+		return server.patch(e)
+	}
+	if err := patch(fmt.Sprintf(`{"baseRevision":0,"patch":{"goals":[%q],"tasks":[%q]}}`, goal.Id, task.Id)); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ := app.FindRecordById("journal", journal.Id)
+	if !slices.Equal(saved.GetStringSlice("goals"), []string{goal.Id}) || !slices.Equal(saved.GetStringSlice("tasks"), []string{task.Id}) {
+		t.Fatalf("links not persisted: %v %v", saved.GetStringSlice("goals"), saved.GetStringSlice("tasks"))
+	}
+	d := Document{Version: 1, Value: []Node{{"type": "p", "children": []any{Node{"text": "Journal notes"}}}}, AudioFileIDs: []string{}}
+	if err := app.RunInTransaction(func(tx core.App) error { return SaveDocument(tx, saved, d, 1) }); err != nil {
+		t.Fatal(err)
+	}
+	if err := patch(fmt.Sprintf(`{"baseRevision":2,"patch":{"tasks":[%q]}}`, foreign.Id)); err == nil {
+		t.Fatal("cross-owner link accepted")
+	}
+	saved, _ = app.FindRecordById("journal", journal.Id)
+	if saved.GetInt("revision") != 2 || !slices.Equal(saved.GetStringSlice("tasks"), []string{task.Id}) || !slices.Equal(saved.GetStringSlice("goals"), []string{goal.Id}) {
+		t.Fatal("document save or rejected link changed relationships")
+	}
+	if err := patch(`{"baseRevision":2,"patch":{"tasks":[]}}`); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ = app.FindRecordById("journal", journal.Id)
+	if len(saved.GetStringSlice("tasks")) != 0 || !slices.Equal(saved.GetStringSlice("goals"), []string{goal.Id}) {
+		t.Fatal("unlink did not preserve other relationships")
+	}
+}
 
 func testApp(t *testing.T) core.App {
 	t.Helper()
