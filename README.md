@@ -127,3 +127,73 @@ docker run --rm --name lyphe --user "$(id -u):$(id -g)" -p 8090:8090 \
 Open http://localhost:8090 for both the app and API. Do not mount `bin/pb_data`. Model HTTP stays inside the container on loopback; only port 8090 is exposed. Whistle runs within the Go process and keeps its model loaded. Stop with `docker stop lyphe`; the Go application receives the termination signal directly and shuts down its model workers.
 
 The Dockerfile supports Linux `amd64` and `arm64`. To target an architecture explicitly, use `docker buildx build --platform linux/amd64 --load -t lyphe:distroless .` (or `linux/arm64`). Optional build arguments are `GO_VERSION`, `BUN_VERSION`, `VERSION`, `COMMIT`, and `BUILD_DATE`. Model sizes dominate the image size. Keep `/tmp` writable for audio conversion and model scratch files; the persistent data directory is `/app/pb_data`.
+
+## Agent access through MCP
+
+Lyphe exposes `/mcp` on the same server and port as the app using Streamable HTTP
+and the official Go MCP SDK. In **Settings → Agent access**, create a named
+credential, copy it once, and configure your agent with the endpoint URL and
+`Authorization: Bearer <credential>` header. Credentials expire after 90 days by
+default; you can choose a different future expiration or revoke them immediately.
+Secrets are stored as hashes and are never available again from the server.
+
+For a client supporting URL and header configuration, the connection looks like:
+
+```json
+{
+  "url": "https://your-lyphe.example/mcp",
+  "headers": { "Authorization": "Bearer <credential>" }
+}
+```
+
+Client configuration keys vary. This release supports bearer credentials, not
+OAuth sign-in or stdio. The endpoint is stateless and supports the protocol
+versions implemented by Go MCP SDK v1.8.0, including 2026-07-28 and the older
+initialization-based protocol. A standalone GET/SSE stream is unnecessary;
+clients should use POST calls. Each request must include the credential, even
+when it includes a session identifier. Request bodies are limited to 2 MiB.
+
+Agents can read and manage their owner's tasks, habits, goals, rich-text
+documents, tags, task order, and habit completions. Journals remain human written:
+agents can list, search, read, and inspect their relationships, but cannot create,
+edit, append, delete, restore, or duplicate them. Writable documents can mention
+journals without editing those journals. There is no permanent purge tool, global
+tag/folder management, file transfer, transcription, account-settings access, or
+credential management through MCP. Existing attachments are preserved and their
+metadata is readable. `save_document` accepts a version-1 Plate document or plain
+text; plain-text replacement retains attachment-bearing blocks and media.
+
+Tools include `search`, `list_entities`, `get_entity`, `get_relationships`,
+`create_entity`, `update_entity`, `save_document`, `append_to_document`,
+`duplicate_entity`, `delete_entity`, `restore_entity`, `reorder_tasks`,
+`get_habit_history`, and `set_habit_day`. Lists are limited to 100 items per page.
+Date filters use journal date, task due date, or goal/habit creation date. Habit-day
+writes require an explicit `YYYY-MM-DD` date. Metadata uses existing field names
+such as `due_on`, `wait_until`, `goal`, and `position`; tags are names rather than
+record IDs. Record revisions are returned by reads and mutations. Supply
+`baseRevision` for changes and duplication, or `revision` per reordered task.
+On `revision_conflict`, read the current record and reconcile changes rather than
+overwriting a human's work. Tool errors include `permission_denied`, `not_found`,
+`validation_error`, `revision_conflict`, and `canceled`.
+
+Creation, duplication, and append are **not idempotent**. Disable automatic
+retries for these calls after ambiguous network failures; inspect the current
+records before deciding whether to repeat them. `set_habit_day` sets completion
+and notes idempotently rather than toggling them.
+
+User-authenticated credential management uses `GET /api/mcp/tokens`,
+`POST /api/mcp/tokens` with `name` and optional RFC3339 `expiration`, and
+`DELETE /api/mcp/tokens/{id}`. MCP credentials are accepted only by `/mcp`, never
+by these management routes, the application REST API, PocketBase, or file routes.
+Existing rows in `tokens` are not activated as MCP credentials.
+
+Use HTTPS for remote connections. Forward `Authorization` and protocol headers
+through the reverse proxy, preserve the external Host header, and do not cache
+MCP or credential responses. Browser requests with an Origin must match the
+endpoint host. Logs record tool name, credential ID, target, outcome and duration,
+without credentials or document bodies. Connecting to a remote agent makes the
+returned content available to that agent and its configured model provider.
+
+Before deploying the additive token migration, stop the backend and back up
+**all of root `pb_data/`**, including uploads. Apply it through the normal release
+process; tests use temporary databases and do not migrate your live data.

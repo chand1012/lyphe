@@ -1,3 +1,4 @@
+import { AgentAccess } from "~/components/agent-access";
 import { toast } from "sonner";
 import { useState } from "react";
 import { useTheme } from "next-themes";
@@ -13,7 +14,7 @@ import { useAuth } from "~/lib/auth";
 import { aiStatus, preferences, flushAll, updatePreferences, useDb } from "~/lib/data";
 import { pb } from "~/lib/pocketbase";
 
-const sections = ["General", "Appearance", "Editor", "AI", "Storage", "Account"] as const;
+const sections = ["General", "Appearance", "Editor", "AI", "Storage", "Agent access", "Account"] as const;
 type Section = (typeof sections)[number];
 
 export default function Settings() {
@@ -92,6 +93,7 @@ export default function Settings() {
             {[{key: "enable_ai", label: "Enable local language model"}, {key: "autocomplete", label: "Writing autocomplete"}, {key: "enable_transcription", label: "Transcribe finished recordings"}, {key: "cleanup", label: "Light transcript cleanup"}].map(({key, label}) => <div key={key} className="flex items-center justify-between"><Label htmlFor={key}>{label}</Label><Switch id={key} checked={!!preferences?.[key]} onCheckedChange={(value) => { void updatePreferences({[key]: value}); }} /></div>)}
             <p className="text-xs text-muted-foreground">Audio and writing are processed on your server. Original transcripts are retained.</p>
           </div>}
+          {section === "Agent access" && user && <AgentAccess key={user.id} />}
           {section === "Storage" && <EmptyState title="Storage settings" hint="Attachments are stored privately on your server. The default limit is 25 MiB per file." />}
         </div>
       </div>
