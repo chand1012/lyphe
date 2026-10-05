@@ -256,6 +256,12 @@ export function DocumentEditor({ entity, audioFirst = false }: { entity: Entity;
   const location = useLocation();
   const [caret, setCaret] = useState<{ left: number; top: number } | null>(null);
   const surface = useRef<HTMLDivElement>(null);
+  const caretHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelCaretHide = () => {
+    if (caretHideTimer.current) clearTimeout(caretHideTimer.current);
+    caretHideTimer.current = null;
+  };
+  useEffect(() => () => { if (caretHideTimer.current) clearTimeout(caretHideTimer.current); }, []);
   const activeEditor = useRef<PlateEditor | null>(null);
   const hoveredBlock = useRef(0);
   const selectedRange = useRef<TRange | null>(null);
@@ -390,7 +396,10 @@ export function DocumentEditor({ entity, audioFirst = false }: { entity: Entity;
   };
 
   return (
-    <div ref={surface} className="relative pb-[clamp(10rem,30dvh,25rem)]" onKeyDownCapture={() => setCaret(null)} onMouseLeave={() => { if (!slash && !blockMenu) setCaret(null); }}>
+    <div ref={surface} className="relative pb-[clamp(10rem,30dvh,25rem)]" onKeyDownCapture={() => { cancelCaretHide(); setCaret(null); }} onMouseEnter={cancelCaretHide} onMouseLeave={() => {
+      cancelCaretHide();
+      if (!slash && !blockMenu) caretHideTimer.current = setTimeout(() => setCaret(null), 150);
+    }}>
       <input ref={fileInput} type="file" className="hidden" aria-label="Attach file" onChange={async (event) => {
         const files = Array.from(event.target.files ?? []); event.target.value = ""; if (!files.length) return;
         const type = mediaType.current; const editor = activeEditor.current; const selection = editor?.selection ? structuredClone(editor.selection) : null;
@@ -433,9 +442,10 @@ export function DocumentEditor({ entity, audioFirst = false }: { entity: Entity;
         }}><Icon className="size-3.5" /></Button>)}
       </div>}
       <div
-        className={`absolute z-30 flex items-center gap-0.5 text-muted-foreground ${caret || slash || blockMenu ? "" : "invisible pointer-events-none"}`}
+        className={`absolute z-30 flex w-[58px] items-center gap-0.5 text-muted-foreground ${caret || slash || blockMenu ? "" : "invisible pointer-events-none"}`}
         style={{ left: caret?.left ?? -58, top: caret?.top ?? 0 }}
         onMouseDown={(event) => event.preventDefault()}
+        onMouseEnter={cancelCaretHide}
         aria-label="Block controls"
       >
         <Popover open={slash} onOpenChange={setSlash}>
