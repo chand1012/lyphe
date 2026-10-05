@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import {
   isRouteErrorResponse,
+  useLocation,
   Links,
   Meta,
   Outlet,
@@ -13,15 +14,20 @@ import { AuthProvider } from "./lib/auth";
 import { applyAppearance } from "./lib/appearance";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { Toaster } from "~/components/ui/sonner";
+import { useDb } from "./lib/data";
+import { pageTitle } from "./lib/page-title";
 import "./app.css";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   useEffect(applyAppearance, []);
+  const location = useLocation();
+  const entities = useDb();
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{pageTitle(location.pathname, location.search, entities)}</title>
         <Meta />
         <Links />
       </head>
