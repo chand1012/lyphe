@@ -198,7 +198,7 @@ function TextBlockEditor({ block, entity, index, onFocus, onCaret, onSlash, cont
             if (event.key === "/" && !before) { event.preventDefault(); onSlash(); return; }
 
           }}
-          className="min-h-48 w-full font-content text-[17px] leading-relaxed outline-none whitespace-pre-wrap break-words [&_h1]:text-3xl [&_h2]:text-2xl [&_h3]:text-xl [&_h4]:text-lg [&_h5]:font-semibold [&_h6]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:text-muted-foreground [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:font-mono [&_code]:text-sm"
+          className="min-h-48 w-full font-content text-[17px] leading-relaxed outline-none whitespace-pre-wrap break-words [&_:is(h1,h2,h3,h4,h5,h6)]:pb-3 [&_h1]:text-3xl [&_h2]:text-2xl [&_h3]:text-xl [&_h4]:text-lg [&_h5]:font-semibold [&_h6]:font-semibold [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-4 [&_blockquote]:text-muted-foreground [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:font-mono [&_code]:text-sm"
         />
       </Plate>
       {ghost && <span aria-hidden="true" className="pointer-events-none absolute max-w-full whitespace-pre-wrap font-content text-[17px] leading-relaxed text-muted-foreground/60" style={{left: ghost.left, top: ghost.top}}>{ghost.text}</span>}
