@@ -11,6 +11,7 @@ import { Progress } from "~/components/ui/progress";
 import { Slider } from "~/components/ui/slider";
 import { Separator } from "~/components/ui/separator";
 import { DocumentEditor } from "~/components/document-editor";
+import { EditableEntityTitle } from "~/components/editable-entity-title";
 import { EntityMenu } from "~/components/entity-menu";
 import { EmptyState } from "~/components/empty-state";
 import { useDb, update } from "~/lib/data";
@@ -38,8 +39,8 @@ export default function Goal({ params }: Route.ComponentProps) {
   return (
     <div className="flex flex-col gap-3">
       <header className="flex items-center justify-between gap-2">
-        <h1 className="text-3xl font-heading">{goal.title}</h1>
-        <EntityMenu entity={goal} />
+        <h1 className="min-w-0 flex-1 text-3xl font-heading"><EditableEntityTitle key={goal.id} entity={goal} /></h1>
+        <EntityMenu entity={goal} context="page" />
       </header>
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/ui/popover";
 import { Calendar } from "~/components/ui/calendar";
 import { Separator } from "~/components/ui/separator";
-import { Input } from "~/components/ui/input";
+import { EditableEntityTitle } from "~/components/editable-entity-title";
 import { EntityRef } from "~/components/entity-ref";
 import { TagEditor } from "~/components/tag-editor";
 import { DocumentEditor } from "~/components/document-editor";
@@ -14,6 +14,11 @@ import { Button } from "~/components/ui/button";
 import { useIsMobile } from "~/hooks/use-mobile";
 import { update, useDb, type Task } from "~/lib/data";
 import { dayLabel, isoDay } from "~/lib/format";
+
+// Dialog dismissal listens before the input can cancel its edit.
+const keepTitleEditOpen = (event: KeyboardEvent) => {
+  if (event.target instanceof HTMLInputElement && event.target.hasAttribute("data-entity-title")) event.preventDefault();
+};
 
 const statuses = ["todo", "in_progress", "done", "in_review", "blocked", "paused"] as const;
 
@@ -24,7 +29,6 @@ export function TaskSheet({ task }: { task: Task }) {
   const close = () => navigate("/tasks");
 
   const body = <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-4">
-    <Input aria-label="Task title" value={task.title} onChange={(event) => update("task", task.id, { title: event.target.value })} className="border-0 px-0 text-lg font-medium shadow-none focus-visible:ring-0" />
     <div className="flex flex-col gap-1">
       <p className="text-xs text-muted-foreground">Status</p>
       <Select value={task.status} onValueChange={(status) => update("task", task.id, { status })}>
@@ -72,15 +76,15 @@ export function TaskSheet({ task }: { task: Task }) {
 
   return mobile ? (
     <Drawer open onOpenChange={(open) => !open && close()}>
-      <DrawerContent className="max-h-[90svh]">
-        <DrawerHeader><DrawerTitle>Task detail</DrawerTitle></DrawerHeader>
+      <DrawerContent onEscapeKeyDown={keepTitleEditOpen} className="max-h-[90svh]">
+        <DrawerHeader><DrawerTitle className="text-left"><EditableEntityTitle key={task.id} entity={task} /></DrawerTitle></DrawerHeader>
         {body}
       </DrawerContent>
     </Drawer>
   ) : (
     <Sheet open onOpenChange={(open) => !open && close()}>
-      <SheetContent className="flex flex-col gap-0 sm:max-w-md">
-        <SheetHeader><SheetTitle>{task.title}</SheetTitle><SheetDescription>Task detail</SheetDescription></SheetHeader>
+      <SheetContent onEscapeKeyDown={keepTitleEditOpen} className="flex flex-col gap-0 sm:max-w-md">
+        <SheetHeader><SheetTitle className="pr-8"><EditableEntityTitle key={task.id} entity={task} /></SheetTitle><SheetDescription>Task detail</SheetDescription></SheetHeader>
         {body}
       </SheetContent>
     </Sheet>

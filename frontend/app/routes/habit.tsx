@@ -3,6 +3,7 @@ import type { Route } from "./+types/habit";
 import { Separator } from "~/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { DocumentEditor } from "~/components/document-editor";
+import { EditableEntityTitle } from "~/components/editable-entity-title";
 import { EntityMenu } from "~/components/entity-menu";
 import { EmptyState } from "~/components/empty-state";
 import { HabitGrid } from "~/components/habit-grid";
@@ -17,8 +18,8 @@ export default function Habit({ params }: Route.ComponentProps) {
   return (
     <div className="flex flex-col gap-3">
       <header className="flex items-center justify-between gap-2">
-        <h1 className="text-3xl font-heading">{habit.title}</h1>
-        <EntityMenu entity={habit} />
+        <h1 className="min-w-0 flex-1 text-3xl font-heading"><EditableEntityTitle key={habit.id} entity={habit} /></h1>
+        <EntityMenu entity={habit} context="page" />
       </header>
 
       <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
