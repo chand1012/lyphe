@@ -14,6 +14,7 @@ import (
 
 	"github.com/chand1012/lyphe/internal/ai"
 	"github.com/chand1012/lyphe/internal/backend"
+	"github.com/chand1012/lyphe/internal/mcp"
 	"github.com/chand1012/lyphe/internal/version"
 	_ "github.com/chand1012/lyphe/migrations"
 )
@@ -23,7 +24,8 @@ const defaultStaticPath = "frontend/build/client"
 
 func main() {
 	app := pocketbase.NewWithConfig(pocketbase.Config{DefaultDataDir: "pb_data"})
-	backend.Register(app)
+	b := backend.Register(app)
+	mcp.Register(app, b)
 	ai.Register(app)
 
 	app.RootCmd.AddCommand(&cobra.Command{

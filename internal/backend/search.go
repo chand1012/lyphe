@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"context"
 	"fmt"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
@@ -87,20 +88,42 @@ func (s *Server) rebuildSearch() error {
 	})
 }
 func (s *Server) search(e *core.RequestEvent) error {
-	q := strings.TrimSpace(e.Request.URL.Query().Get("q"))
+	out, err := s.Search(e.Request.Context(), human(e), e.Request.URL.Query().Get("q"), "")
+	if err != nil {
+		return response(e, err)
+	}
+	return e.JSON(200, out)
+}
+
+type SearchHit struct {
+	Kind        string `json:"kind" db:"kind"`
+	ID          string `json:"id" db:"entity_id"`
+	PlacementID string `json:"placementId,omitempty" db:"placement_id"`
+	Title       string `json:"title" db:"title"`
+	Snippet     string `json:"snippet" db:"snippet"`
+}
+
+func (s *Server) Search(ctx context.Context, p Principal, q, kind string) ([]SearchHit, error) {
+	checkKind := kind
+	if checkKind == "" {
+		checkKind = "task"
+	}
+	if err := authorize(ctx, p, checkKind, false); err != nil {
+		return nil, err
+	}
+	q = strings.TrimSpace(q)
 	if len(q) > 300 {
-		return e.BadRequestError("Search is too long", nil)
+		return nil, fmt.Errorf("search is too long")
 	}
-	type Hit struct {
-		Kind        string `json:"kind" db:"kind"`
-		ID          string `json:"id" db:"entity_id"`
-		PlacementID string `json:"placementId,omitempty" db:"placement_id"`
-		Title       string `json:"title" db:"title"`
-		Snippet     string `json:"snippet" db:"snippet"`
+
+	hits := []SearchHit{}
+	params := dbx.Params{"u": p.UserID}
+	kindClause := ""
+	if kind != "" {
+		kindClause = " AND kind={:kind}"
+		params["kind"] = kind
 	}
-	hits := []Hit{}
-	params := dbx.Params{"u": e.Auth.Id}
-	query := "SELECT kind,entity_id,placement_id,title,substr(body,1,180) AS snippet FROM content_search WHERE user={:u} LIMIT 50"
+	query := "SELECT kind,entity_id,placement_id,title,substr(body,1,180) AS snippet FROM content_search WHERE user={:u}" + kindClause + " LIMIT 50"
 	if q != "" {
 		tokens := strings.Fields(q)
 		quoted := []string{}
@@ -108,13 +131,14 @@ func (s *Server) search(e *core.RequestEvent) error {
 			quoted = append(quoted, "\""+strings.ReplaceAll(t, "\"", "\"\"")+"\"*")
 		}
 		params["q"] = strings.Join(quoted, " AND ")
-		query = "SELECT kind,entity_id,placement_id,title,snippet(content_search,5,'','', '…',24) AS snippet FROM content_search WHERE content_search MATCH {:q} AND user={:u} ORDER BY rank LIMIT 50"
+		query = "SELECT kind,entity_id,placement_id,title,snippet(content_search,5,'','', '…',24) AS snippet FROM content_search WHERE content_search MATCH {:q} AND user={:u}" + kindClause + " ORDER BY rank LIMIT 50"
 	}
-	if err := e.App.DB().NewQuery(query).Bind(params).All(&hits); err != nil {
-		return response(e, err)
+	if err := s.App.DB().NewQuery(query).Bind(params).All(&hits); err != nil {
+		return nil, err
 	}
-	return e.JSON(200, hits)
+	return hits, nil
 }
+
 func (s *Server) cleanup() error {
 	return s.App.RunInTransaction(func(app core.App) error {
 		cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour).Format("2006-01-02 15:04:05.000Z")

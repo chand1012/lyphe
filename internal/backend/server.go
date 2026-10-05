@@ -1,12 +1,14 @@
 package backend
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/gabriel-vasile/mimetype"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -95,18 +97,13 @@ func validateRelations(app core.App, r *core.Record, user string) error {
 	}
 	return nil
 }
-func (s *Server) record(e *core.RequestEvent) (*core.Record, error) {
-	table, ok := collections[e.Request.PathValue("kind")]
-	if !ok {
-		return nil, e.NotFoundError("Unknown entity", nil)
-	}
-	r, err := owned(e.App, table, e.Request.PathValue("id"), e.Auth.Id)
-	if err != nil {
-		return nil, e.NotFoundError("Record unavailable", nil)
-	}
-	return r, nil
-}
 func response(e *core.RequestEvent, err error) error {
+	if errors.Is(err, ErrPermission) {
+		return e.ForbiddenError(err.Error(), nil)
+	}
+	if errors.Is(err, ErrUnavailable) {
+		return e.NotFoundError(err.Error(), nil)
+	}
 	if errors.Is(err, ErrConflict) {
 		return e.JSON(409, map[string]any{"code": "revision_conflict", "message": err.Error()})
 	}
@@ -119,14 +116,18 @@ func DTO(app core.App, r *core.Record) map[string]any {
 	kind, _ := entityKind(r.Collection().Name)
 	out := r.PublicExport()
 	out["kind"] = kind
-	out["content"] = ReadDocument(r)
+	d := ReadDocument(r)
+	out["content"] = d
+	if r.GetString("content_text") == "" {
+		out["content_text"] = documentText(d)
+	}
 	out["title"] = r.GetString("title")
 	if kind == "goal" && out["title"] == "" {
 		out["title"] = r.GetString("goal")
 	}
 	tagNames := []string{}
 	for _, id := range r.GetStringSlice("tags") {
-		if t, err := app.FindRecordById("tags", id); err == nil {
+		if t, err := app.FindRecordById("tags", id); err == nil && t.GetString("user") == r.GetString("user") {
 			tagNames = append(tagNames, t.GetString("name"))
 		}
 	}
@@ -134,83 +135,43 @@ func DTO(app core.App, r *core.Record) map[string]any {
 	out["folderId"] = r.GetString("folder")
 	out["folder"] = "Unfiled"
 	if id := r.GetString("folder"); id != "" {
-		if f, err := app.FindRecordById("folders", id); err == nil {
+		if f, err := app.FindRecordById("folders", id); err == nil && f.GetString("user") == r.GetString("user") {
 			out["folder"] = f.GetString("name")
 		}
 	}
 	return out
 }
 func (s *Server) list(e *core.RequestEvent) error {
-	table, ok := collections[e.Request.PathValue("kind")]
-	if !ok {
-		return e.NotFoundError("Unknown entity", nil)
-	}
 	page, _ := strconv.Atoi(e.Request.URL.Query().Get("page"))
 	if page < 1 {
 		page = 1
 	}
-	rows, err := e.App.FindRecordsByFilter(table, "user={:u} && deleted_at=''", "-created", 100, (page-1)*100, dbx.Params{"u": e.Auth.Id})
+	out, err := s.List(e.Request.Context(), human(e), e.Request.PathValue("kind"), ListOptions{Page: page})
 	if err != nil {
 		return response(e, err)
 	}
-	items := []any{}
-	for _, r := range rows {
-		items = append(items, DTO(e.App, r))
-	}
-	return e.JSON(200, map[string]any{"items": items, "page": page, "hasMore": len(rows) == 100})
+	return e.JSON(200, out)
 }
 func (s *Server) get(e *core.RequestEvent) error {
-	r, err := s.record(e)
+	out, err := s.Get(e.Request.Context(), human(e), e.Request.PathValue("kind"), e.Request.PathValue("id"))
 	if err != nil {
-		return err
+		return response(e, err)
 	}
-	return e.JSON(200, DTO(e.App, r))
+	return e.JSON(200, out)
 }
-
-type Mutation struct {
-	BaseRevision int            `json:"baseRevision"`
-	Patch        map[string]any `json:"patch"`
-	Document     Document       `json:"document"`
-}
-
 func (s *Server) create(e *core.RequestEvent) error {
-	table, ok := collections[e.Request.PathValue("kind")]
-	if !ok {
-		return e.NotFoundError("Unknown entity", nil)
-	}
 	var input map[string]any
 	if err := e.BindBody(&input); err != nil {
 		return response(e, err)
 	}
-	var created *core.Record
-	err := e.App.RunInTransaction(func(app core.App) error {
-		c, err := app.FindCollectionByNameOrId(table)
-		if err != nil {
-			return err
-		}
-		r := core.NewRecord(c)
-		r.Set("user", e.Auth.Id)
-		r.Set("title", "Untitled")
-		r.Set("status", map[string]string{"tasks": "todo", "goals": "active"}[table])
-		r.Set("cadence", "daily")
-		r.Set("date", time.Now().Format("2006-01-02"))
-		r.Set("content", Document{Version: 1, Value: []Node{{"type": "p", "children": []any{Node{"text": ""}}}}, AudioFileIDs: []string{}})
-		if err = s.applyPatch(app, r, input, e.Auth.Id); err != nil {
-			return err
-		}
-		if err = app.Save(r); err != nil {
-			return err
-		}
-		created = r
-		return indexEntity(app, r)
-	})
+	out, err := s.Create(e.Request.Context(), human(e), e.Request.PathValue("kind"), input, nil)
 	if err != nil {
 		return response(e, err)
 	}
-	return e.JSON(201, DTO(e.App, created))
+	return e.JSON(201, out)
 }
 func (s *Server) applyPatch(app core.App, r *core.Record, patch map[string]any, user string) error {
-	allowed := map[string]bool{"title": true, "status": true, "progress": true, "cadence": true, "priority": true, "effort": true, "date": true, "due_on": true, "goal": true, "goals": true, "tasks": true, "habits": true, "position": true}
+	allowed := map[string]bool{"title": true, "status": true, "progress": true, "cadence": true, "priority": true, "effort": true, "date": true, "due_on": true, "goal": true, "goals": true, "tasks": true, "habits": true, "position": true, "wait_until": true, "hour": true, "minute": true, "day": true}
 	for k, v := range patch {
 		if allowed[k] && r.Collection().Fields.GetByName(k) != nil {
 			r.Set(k, v)
@@ -275,36 +236,15 @@ func namedRecord(app core.App, table, user, name string) (*core.Record, error) {
 	return r, err
 }
 func (s *Server) patch(e *core.RequestEvent) error {
-	r, err := s.record(e)
-	if err != nil {
-		return err
-	}
 	var input Mutation
-	if err = e.BindBody(&input); err != nil {
+	if err := e.BindBody(&input); err != nil {
 		return response(e, err)
 	}
-	err = e.App.RunInTransaction(func(app core.App) error {
-		fresh, err := app.FindRecordById(r.Collection(), r.Id)
-		if err != nil {
-			return err
-		}
-		if fresh.GetInt("revision") != input.BaseRevision {
-			return ErrConflict
-		}
-		if err = s.applyPatch(app, fresh, input.Patch, e.Auth.Id); err != nil {
-			return err
-		}
-		fresh.Set("revision", fresh.GetInt("revision")+1)
-		if err = app.Save(fresh); err != nil {
-			return err
-		}
-		r = fresh
-		return indexEntity(app, fresh)
-	})
+	out, err := s.Update(e.Request.Context(), human(e), e.Request.PathValue("kind"), e.Request.PathValue("id"), input.BaseRevision, input.Patch)
 	if err != nil {
 		return response(e, err)
 	}
-	return e.JSON(200, DTO(e.App, r))
+	return e.JSON(200, out)
 }
 func SaveDocument(app core.App, r *core.Record, d Document, revision int) error {
 	if r.GetInt("revision") != revision {
@@ -382,102 +322,39 @@ func SaveDocument(app core.App, r *core.Record, d Document, revision int) error 
 	return indexEntity(app, r)
 }
 func (s *Server) document(e *core.RequestEvent) error {
-	r, err := s.record(e)
-	if err != nil {
-		return err
-	}
 	var input Mutation
-	if err = e.BindBody(&input); err != nil {
+	if err := e.BindBody(&input); err != nil {
 		return response(e, err)
 	}
-	err = e.App.RunInTransaction(func(app core.App) error {
-		fresh, err := app.FindRecordById(r.Collection(), r.Id)
-		if err != nil {
-			return err
-		}
-		if fresh.GetString("deleted_at") != "" {
-			return fmt.Errorf("record is deleted")
-		}
-		if err = SaveDocument(app, fresh, input.Document, input.BaseRevision); err != nil {
-			return err
-		}
-		r = fresh
-		return nil
-	})
+	out, err := s.WriteDocument(e.Request.Context(), human(e), e.Request.PathValue("kind"), e.Request.PathValue("id"), input.BaseRevision, input.Document, nil)
 	if err != nil {
 		return response(e, err)
 	}
-	return e.JSON(200, DTO(e.App, r))
+	return e.JSON(200, out)
 }
 func (s *Server) deleted(e *core.RequestEvent, restore bool) error {
-	r, err := s.record(e)
-	if err != nil {
-		return err
-	}
-	err = e.App.RunInTransaction(func(app core.App) error {
-		r, err = app.FindRecordById(r.Collection(), r.Id)
-		if err != nil {
-			return err
-		}
-		value := ""
-		if !restore {
-			value = time.Now().UTC().Format(time.RFC3339)
-		}
-		if !restore {
-			kind, _ := entityKind(r.Collection().Name)
-			jobs, err := app.FindRecordsByFilter("transcriptions", kind+"={:id} && (status='queued' || status='transcribing' || status='cleaning')", "", 0, 0, dbx.Params{"id": r.Id})
-			if err != nil {
-				return err
-			}
-			for _, job := range jobs {
-				job.Set("status", "canceled")
-				if err := app.Save(job); err != nil {
-					return err
-				}
-			}
-		}
-		r.Set("deleted_at", value)
-		r.Set("revision", r.GetInt("revision")+1)
-		if err = app.Save(r); err != nil {
-			return err
-		}
-		return indexEntity(app, r)
-	})
+	revision, err := optionalRevision(e)
 	if err != nil {
 		return response(e, err)
 	}
-	return e.JSON(200, DTO(e.App, r))
+	out, err := s.SetDeleted(e.Request.Context(), human(e), e.Request.PathValue("kind"), e.Request.PathValue("id"), restore, revision)
+	if err != nil {
+		return response(e, err)
+	}
+	return e.JSON(200, out)
 }
 func (s *Server) remove(e *core.RequestEvent) error  { return s.deleted(e, false) }
 func (s *Server) restore(e *core.RequestEvent) error { return s.deleted(e, true) }
 func (s *Server) duplicate(e *core.RequestEvent) error {
-	r, err := s.record(e)
-	if err != nil {
-		return err
-	}
-	var copy *core.Record
-	err = e.App.RunInTransaction(func(app core.App) error {
-		copy = core.NewRecord(r.Collection())
-		for _, f := range r.Collection().Fields {
-			if f.GetName() != "id" && f.GetName() != "created" && f.GetName() != "updated" {
-				copy.Set(f.GetName(), r.Get(f.GetName()))
-			}
-		}
-		copy.Set("title", r.GetString("title")+" (copy)")
-		copy.Set("revision", 0)
-		copy.Set("deleted_at", "")
-		if err := app.Save(copy); err != nil {
-			return err
-		}
-		d := ReadDocument(r)
-		renamePlacements(d.Value)
-		renamePlacements(d.Media)
-		return SaveDocument(app, copy, d, 0)
-	})
+	revision, err := optionalRevision(e)
 	if err != nil {
 		return response(e, err)
 	}
-	return e.JSON(201, DTO(e.App, copy))
+	out, err := s.Duplicate(e.Request.Context(), human(e), e.Request.PathValue("kind"), e.Request.PathValue("id"), revision)
+	if err != nil {
+		return response(e, err)
+	}
+	return e.JSON(201, out)
 }
 func renamePlacements(nodes []Node) {
 	for _, n := range nodes {
@@ -494,154 +371,35 @@ func renamePlacements(nodes []Node) {
 	}
 }
 func (s *Server) relationships(e *core.RequestEvent) error {
-	r, err := s.record(e)
-	if err != nil {
-		return err
-	}
-	kind, _ := entityKind(r.Collection().Name)
-	rows, err := e.App.FindRecordsByFilter("document_references", "user={:u} && (source_"+kind+"={:id} || target_"+kind+"={:id})", "", 0, 0, dbx.Params{"u": e.Auth.Id, "id": r.Id})
+	out, err := s.Relationships(e.Request.Context(), human(e), e.Request.PathValue("kind"), e.Request.PathValue("id"))
 	if err != nil {
 		return response(e, err)
 	}
-	edges := []map[string]any{}
-	seen := map[string]bool{}
-	add := func(sourceKind, sourceID, targetKind, targetID string, manual bool) {
-		key := sourceKind + ":" + sourceID + ":" + targetKind + ":" + targetID
-		if seen[key] {
-			return
-		}
-		seen[key] = true
-		edges = append(edges, map[string]any{"source_" + sourceKind: sourceID, "target_" + targetKind: targetID, "manual": manual})
-	}
-	for _, row := range rows {
-		for sourceKind := range collections {
-			for targetKind := range collections {
-				if sourceID, targetID := row.GetString("source_"+sourceKind), row.GetString("target_"+targetKind); sourceID != "" && targetID != "" {
-					add(sourceKind, sourceID, targetKind, targetID, false)
-				}
-			}
-		}
-	}
-	for sourceKind, table := range collections {
-		candidates, err := e.App.FindRecordsByFilter(table, "user={:u} && deleted_at=''", "", 0, 0, dbx.Params{"u": e.Auth.Id})
-		if err != nil {
-			return response(e, err)
-		}
-		for _, source := range candidates {
-			for _, field := range source.Collection().Fields {
-				relation, ok := field.(*core.RelationField)
-				if !ok {
-					continue
-				}
-				for targetKind, targetTable := range collections {
-					collection, _ := e.App.FindCollectionByNameOrId(targetTable)
-					if relation.CollectionId != collection.Id {
-						continue
-					}
-					for _, targetID := range source.GetStringSlice(relation.Name) {
-						if (sourceKind == kind && source.Id == r.Id) || (targetKind == kind && targetID == r.Id) {
-							if target, err := owned(e.App, targetTable, targetID, e.Auth.Id); err == nil && target.GetString("deleted_at") == "" {
-								add(sourceKind, source.Id, targetKind, targetID, true)
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	return e.JSON(200, edges)
+	return e.JSON(200, out)
 }
 func (s *Server) reorder(e *core.RequestEvent) error {
 	var input struct {
-		Tasks []struct {
-			ID       string `json:"id"`
-			Status   string `json:"status"`
-			Position int    `json:"position"`
-			Revision int    `json:"revision"`
-		} `json:"tasks"`
+		Tasks []TaskOrder `json:"tasks"`
 	}
 	if err := e.BindBody(&input); err != nil {
 		return response(e, err)
 	}
-	if len(input.Tasks) > 1000 {
-		return response(e, fmt.Errorf("too many tasks"))
-	}
-	items := []any{}
-	err := e.App.RunInTransaction(func(app core.App) error {
-		seen := map[string]bool{}
-		for _, item := range input.Tasks {
-			if seen[item.ID] {
-				return fmt.Errorf("duplicate task")
-			}
-			seen[item.ID] = true
-			r, err := owned(app, "tasks", item.ID, e.Auth.Id)
-			if err != nil {
-				return err
-			}
-			if r.GetInt("revision") != item.Revision {
-				return ErrConflict
-			}
-			r.Set("status", item.Status)
-			r.Set("position", item.Position)
-			r.Set("revision", item.Revision+1)
-			if err = app.Save(r); err != nil {
-				return err
-			}
-			items = append(items, DTO(app, r))
-			if err = indexEntity(app, r); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	out, err := s.Reorder(e.Request.Context(), human(e), input.Tasks)
 	if err != nil {
 		return response(e, err)
 	}
-	return e.JSON(200, items)
+	return e.JSON(200, out)
 }
 func (s *Server) habitDay(e *core.RequestEvent) error {
-	habit, err := owned(e.App, "habits", e.Request.PathValue("id"), e.Auth.Id)
-	if err != nil {
-		return e.NotFoundError("Habit unavailable", nil)
-	}
-	date := e.Request.PathValue("date")
-	if _, err = time.Parse("2006-01-02", date); err != nil {
+	var input HabitDayInput
+	if err := e.BindBody(&input); err != nil {
 		return response(e, err)
 	}
-	var input struct {
-		Completed *bool   `json:"completed"`
-		Notes     *string `json:"notes"`
-	}
-	if err = e.BindBody(&input); err != nil {
-		return response(e, err)
-	}
-	var row *core.Record
-	err = e.App.RunInTransaction(func(app core.App) error {
-		rows, err := app.FindRecordsByFilter("habit_completions", "user={:u} && habit={:h} && date={:d}", "", 1, 0, dbx.Params{"u": e.Auth.Id, "h": habit.Id, "d": date})
-		if err != nil {
-			return err
-		}
-		if len(rows) > 0 {
-			row = rows[0]
-		} else {
-			c, _ := app.FindCollectionByNameOrId("habit_completions")
-			row = core.NewRecord(c)
-			row.Set("user", e.Auth.Id)
-			row.Set("habit", habit.Id)
-			row.Set("date", date)
-		}
-		if input.Completed != nil {
-			row.Set("is_completed", *input.Completed)
-		}
-		if input.Notes != nil {
-			row.Set("notes", htmlEscape(*input.Notes))
-		}
-		return app.Save(row)
-	})
+	out, err := s.SetHabitDay(e.Request.Context(), human(e), e.Request.PathValue("id"), e.Request.PathValue("date"), input)
 	if err != nil {
 		return response(e, err)
 	}
-	return e.JSON(200, row)
+	return e.JSON(200, out)
 }
 func htmlEscape(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
@@ -733,4 +491,22 @@ func (s *Server) updatePreferences(e *core.RequestEvent) error {
 		return response(e, err)
 	}
 	return e.JSON(200, r)
+}
+
+func human(e *core.RequestEvent) Principal { return Principal{UserID: e.Auth.Id, Source: Human} }
+func optionalRevision(e *core.RequestEvent) (*int, error) {
+	var input struct {
+		BaseRevision *int `json:"baseRevision"`
+	}
+	err := json.NewDecoder(e.Request.Body).Decode(&input)
+	if errors.Is(err, io.EOF) {
+		err = nil
+	}
+	return input.BaseRevision, err
+}
+
+type Mutation struct {
+	BaseRevision int            `json:"baseRevision"`
+	Patch        map[string]any `json:"patch"`
+	Document     Document       `json:"document"`
 }
