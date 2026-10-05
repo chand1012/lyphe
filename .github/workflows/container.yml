@@ -24,13 +24,13 @@ jobs:
 
       - name: Download completion model
         env:
-          MODEL_SHA256: fd5353fd8772807b32fb554d949290bdcb1b161505943c2c7dadf4d037c9e0b7
+          MODEL_SHA256: 4b147d05e65d2c1df1d808d0cedfa72666df4b2e8e4e8979388b4a334bd23ea4
         run: |
           mkdir -p models
           curl --fail --location --retry 3 \
-            https://huggingface.co/chand1012/llamafiles/resolve/main/SmolLM2-135M.Q8_0.llamafile \
-            --output models/SmolLM2-135M.Q8_0.llamafile
-          echo "$MODEL_SHA256  models/SmolLM2-135M.Q8_0.llamafile" | sha256sum --check
+            https://huggingface.co/chand1012/smollm2-1.7b.llamafile/resolve/9773366048c715ef594a2395f5d7354a1a317e73/smollm2-1.7b.llamafile \
+            --output models/smollm2-1.7b.llamafile
+          echo "$MODEL_SHA256  models/smollm2-1.7b.llamafile" | sha256sum --check
 
       - name: Set build date
         id: date

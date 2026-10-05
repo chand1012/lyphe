@@ -6,8 +6,9 @@ VERSION_TAG := `git describe --tags --abbrev=0 2>/dev/null || echo dev`
 LD_FLAGS := "-X github.com/chand1012/lyphe/internal/version.Version=" + VERSION_TAG + " -X github.com/chand1012/lyphe/internal/version.CommitHash=" + GIT_COMMIT + " -X github.com/chand1012/lyphe/internal/version.BuildDate=" + DATE
 EXEC_EXT := "" # set to `.exe` on windows
 NEEDLE_PACKAGE := "cactus-needle==3.1.0"
-SMOLLM_FILE := "models/SmolLM2-135M.Q8_0.llamafile"
-SMOLLM_URL := "https://huggingface.co/chand1012/llamafiles/resolve/main/SmolLM2-135M.Q8_0.llamafile"
+SMOLLM_FILE := "models/smollm2-1.7b.llamafile"
+SMOLLM_SHA256 := "4b147d05e65d2c1df1d808d0cedfa72666df4b2e8e4e8979388b4a334bd23ea4"
+SMOLLM_URL := "https://huggingface.co/chand1012/smollm2-1.7b.llamafile/resolve/9773366048c715ef594a2395f5d7354a1a317e73/smollm2-1.7b.llamafile"
 
 default:
   just --list --unsorted
@@ -41,9 +42,10 @@ download-smollm:
     model_tmp=$(mktemp "{{SMOLLM_FILE}}.XXXXXX")
     trap 'rm -f "$model_tmp"' EXIT HUP INT TERM
     curl --fail --location --retry 3 --output "$model_tmp" "{{SMOLLM_URL}}"
-    test -s "$model_tmp"
+    echo "{{SMOLLM_SHA256}}  $model_tmp" | shasum -a 256 --check
     mv "$model_tmp" "{{SMOLLM_FILE}}"
   fi
+  echo "{{SMOLLM_SHA256}}  {{SMOLLM_FILE}}" | shasum -a 256 --check
   chmod +x "{{SMOLLM_FILE}}"
 
 # Rebuild the checked-in core engine when updating Needle.

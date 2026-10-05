@@ -29,7 +29,7 @@ import {
 import { EntityMenu } from "~/components/entity-menu";
 import { useAuth } from "~/lib/auth";
 import { create, createFolder, flushAll, folders, update, useDb, type Entity } from "~/lib/data";
-import { dayLabel } from "~/lib/format";
+import { journalLabel } from "~/lib/format";
 import { href } from "~/lib/href";
 
 function Row({ entity, label, sub = false }: { entity: Entity; label: string; sub?: boolean }) {
@@ -97,7 +97,7 @@ function JournalTree() {
                 <CollapsibleContent>
                   <SidebarMenuSub>
                     {entries.filter((e) => e.folder === folder).map((entry) => (
-                      <Row key={entry.id} entity={entry} label={dayLabel(entry.date)} sub />
+                      <Row key={entry.id} entity={entry} label={journalLabel(entry)} sub />
                     ))}
                     <SidebarMenuSubItem>
                       <SidebarMenuSubButton asChild size="sm"><button onClick={() => newEntry(folder)}>+ New</button></SidebarMenuSubButton>

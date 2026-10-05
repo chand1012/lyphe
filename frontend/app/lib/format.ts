@@ -16,3 +16,8 @@ export function dayLabel(iso: string) {
 
 export const clock = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+
+export function journalLabel(entry: { title: string; date: string }) {
+  const title = entry.title.trim();
+  return title && !["Untitled", "New journal"].includes(title) ? title : dayLabel(entry.date);
+}

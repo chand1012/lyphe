@@ -39,13 +39,13 @@ ARG TARGETARCH
 RUN case "$TARGETARCH" in amd64|arm64) ;; *) echo "Local models require amd64 or arm64" >&2; exit 1;; esac
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg python3-minimal \
     && rm -rf /var/lib/apt/lists/*
-COPY models/SmolLM2-135M.Q8_0.llamafile /models/SmolLM2-135M.Q8_0.llamafile
+COPY models/smollm2-1.7b.llamafile /models/smollm2-1.7b.llamafile
 COPY bin/whistle/ /models/whistle/
 COPY scripts/verify-whistle.py /verify-whistle.py
 RUN python3 /verify-whistle.py /models/whistle
 COPY docker/assimilate.py /assimilate.py
-RUN python3 /assimilate.py "$TARGETARCH" /models/SmolLM2-135M.Q8_0.llamafile \
-    && chmod 755 /models/SmolLM2-135M.Q8_0.llamafile
+RUN python3 /assimilate.py "$TARGETARCH" /models/smollm2-1.7b.llamafile \
+    && chmod 755 /models/smollm2-1.7b.llamafile
 # Copy only the tools and their shared-library closure, not a Debian installation.
 COPY docker/copy-runtime.sh /copy-runtime.sh
 RUN /bin/sh /copy-runtime.sh \
@@ -59,7 +59,7 @@ COPY --from=runtime-deps /runtime/ /
 COPY --from=backend /out/lyphe /app/lyphe
 COPY --from=frontend /src/frontend/build/client/ /app/frontend/build/client/
 COPY --from=runtime-deps /models/ /app/bin/
-ENV LYPHE_LLAMAFILE=/app/bin/SmolLM2-135M.Q8_0.llamafile \
+ENV LYPHE_LLAMAFILE=/app/bin/smollm2-1.7b.llamafile \
     LYPHE_WHISTLE_WASM=/app/bin/whistle/needle.wasm \
     LYPHE_WHISTLE_MODEL=/app/bin/whistle/whistle.cact \
     LYPHE_FFMPEG=/usr/bin/ffmpeg \

@@ -1,5 +1,6 @@
 import { createPlatePlugin } from "platejs/react";
 import { NodeApi } from "platejs";
+import { indentList } from "./list";
 import { markdownBlock, markdownInline } from "./markdown-shortcuts";
 
 export const MarkdownPlugin = createPlatePlugin({ key: "markdown-shortcuts" }).overrideEditor(({ editor, tf: { insertText, insertBreak } }) => ({
@@ -21,7 +22,7 @@ export const MarkdownPlugin = createPlatePlugin({ key: "markdown-shortcuts" }).o
         const end = editor.selection!.anchor;
         editor.tf.withNewBatch(() => editor.tf.withoutNormalizing(() => {
           editor.tf.delete({ at: { anchor: start, focus: end } });
-          editor.tf.setNodes(shortcut, { at: [point.path[0]] });
+          editor.tf.setNodes({ ...shortcut, indent: 0 }, { at: [point.path[0]] });
           if (shortcut.type === "hr") {
             const path = [point.path[0] + 1];
             editor.tf.insertNodes({ type: "p", children: [{ text: "" }] }, { at: path });
@@ -66,7 +67,8 @@ export const MarkdownPlugin = createPlatePlugin({ key: "markdown-shortcuts" }).o
           return;
         }
         if ((block.type === "list-item" || block.type === "todo") && !NodeApi.string(block)) {
-          editor.tf.setNodes({ type: "p" }, { at: [point.path[0]] });
+          if (block.type === "list-item" && Number(block.indent) > 0) { indentList(editor, true); return; }
+          editor.tf.setNodes({ type: "p", indent: 0 }, { at: [point.path[0]] });
           return;
         }
       }

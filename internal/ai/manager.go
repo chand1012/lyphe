@@ -49,7 +49,7 @@ func env(key, fallback string) string {
 }
 func DefaultConfig() Config {
 	root, _ := os.Getwd()
-	return Config{Llamafile: env("LYPHE_LLAMAFILE", filepath.Join(root, "models", "SmolLM2-135M.Q8_0.llamafile")), WhistleWASM: env("LYPHE_WHISTLE_WASM", filepath.Join(root, "bin", "whistle", "needle.wasm")), WhistleModel: env("LYPHE_WHISTLE_MODEL", filepath.Join(root, "bin", "whistle", "whistle.cact")), FFmpeg: env("LYPHE_FFMPEG", "ffmpeg"), FFprobe: env("LYPHE_FFPROBE", "ffprobe"), Address: env("LYPHE_LLM_ADDRESS", "127.0.0.1:8081"), Threads: max(1, min(4, runtime.NumCPU()-1))}
+	return Config{Llamafile: env("LYPHE_LLAMAFILE", filepath.Join(root, "models", "smollm2-1.7b.llamafile")), WhistleWASM: env("LYPHE_WHISTLE_WASM", filepath.Join(root, "bin", "whistle", "needle.wasm")), WhistleModel: env("LYPHE_WHISTLE_MODEL", filepath.Join(root, "bin", "whistle", "whistle.cact")), FFmpeg: env("LYPHE_FFMPEG", "ffmpeg"), FFprobe: env("LYPHE_FFPROBE", "ffprobe"), Address: env("LYPHE_LLM_ADDRESS", "127.0.0.1:8081"), Threads: max(1, min(4, runtime.NumCPU()-1))}
 }
 
 type Manager struct {
@@ -192,11 +192,11 @@ func (m *Manager) modelRequest(ctx context.Context, endpoint string, payload map
 }
 
 func (m *Manager) Autocomplete(ctx context.Context, prompt string) (string, error) {
-	// SmolLM2 is a base model: continue the writing directly instead of framing it
-	// as a chat instruction. Native completion returns only the generated suffix.
+	// Use the instruction model with an assistant prefill. Native completion
+	// preserves the exact suffix, including its leading whitespace.
 	raw, err := m.modelRequest(ctx, "/completion", map[string]any{
-		"prompt": prompt, "n_predict": 12, "temperature": 0.0,
-		"repeat_penalty": 1.1, "repeat_last_n": 64, "seed": 42,
+		"prompt": autocompleteInput(prompt), "n_predict": 32, "temperature": 0.0,
+		"repeat_penalty": 1.05, "repeat_last_n": 64, "seed": 42,
 		"cache_prompt": true, "stream": false,
 		"stop": []string{"\n", "<|endoftext|>", "<|im_end|>", "<|im_start|>"},
 	})

@@ -27,6 +27,7 @@ import { SaveStatus } from "~/components/save-status";
 import { TranscriptActions } from "~/components/transcript-actions";
 import { documentValue, isDocumentBlock, saveDocument } from "~/lib/document";
 import { MarkdownPlugin } from "~/lib/markdown-plugin";
+import { indentList, listDepth, listNumber } from "~/lib/list";
 import { Checkbox } from "~/components/ui/checkbox";
 
 type TextType = "paragraph" | "heading" | "quote";
@@ -61,17 +62,10 @@ const FilePlugin = createPlatePlugin({
 const ListPlugin = createPlatePlugin({ key: "list-item", node: { isElement: true } })
   .withComponent(({ attributes, children, element, editor }: PlateElementProps) => {
     const path = editor.api.findPath(element);
-    let start = 1;
-    if (element.ordered && path) {
-      for (let i = path[0] - 1; i >= 0; i--) {
-        const previous = editor.children[i];
-        if (previous.type !== "list-item" || !previous.ordered) break;
-        start++;
-      }
-    }
+    const style = { marginLeft: `${listDepth(element) * 24}px` };
     return element.ordered
-      ? <ol {...attributes} start={start} className="list-decimal pl-6"><li>{children}</li></ol>
-      : <ul {...attributes} className="list-disc pl-6"><li>{children}</li></ul>;
+      ? <ol {...attributes} start={path ? listNumber(editor.children, path[0]) : 1} style={style} className="list-decimal pl-6"><li>{children}</li></ol>
+      : <ul {...attributes} style={style} className="list-disc pl-6"><li>{children}</li></ul>;
   });
 
 const TodoPlugin = createPlatePlugin({ key: "todo", node: { isElement: true } })
@@ -106,6 +100,8 @@ function TextBlockEditor({ block, entity, index, onFocus, onCaret, onSlash, cont
   const [ghost, setGhost] = useState<{ text: string; point: any; left: number; top: number } | null>(null);
   const completionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completionAbort = useRef<AbortController | null>(null);
+  const completionVersion = useRef(0);
+  const completionPoint = useRef<TRange["anchor"] | null>(null);
   const textSurface = useRef<HTMLDivElement>(null);
   useEffect(() => () => { if (completionTimer.current) clearTimeout(completionTimer.current); completionAbort.current?.abort(); }, []);
   const [mention, setMention] = useState<{ query: string; range: TRange } | null>(null);
@@ -116,7 +112,7 @@ function TextBlockEditor({ block, entity, index, onFocus, onCaret, onSlash, cont
     value: block.value ?? [{ type: block.type === "heading" ? "h2" : block.type === "quote" ? "blockquote" : "p", children: [{ text: block.text }] }],
   });
   useEffect(() => { onReady?.(editor); }, [editor]);
-  const cancelCompletion = () => { if (completionTimer.current) clearTimeout(completionTimer.current); completionAbort.current?.abort(); setGhost(null); };
+  const cancelCompletion = () => { completionVersion.current++; completionPoint.current = null; if (completionTimer.current) clearTimeout(completionTimer.current); completionAbort.current?.abort(); setGhost(null); };
   const suggest = () => {
     cancelCompletion();
     if (!aiStatus?.completion.available || !preferences?.enable_ai || !preferences?.autocomplete || !editor.selection || !editor.api.isCollapsed()) return;
@@ -129,10 +125,12 @@ function TextBlockEditor({ block, entity, index, onFocus, onCaret, onSlash, cont
     // Keep paragraph boundaries in the model's context instead of running blocks together.
     const context = [...editor.children.slice(0, point.path[0]).map((node) => NodeApi.string(node)), currentParagraph].join("\n").slice(-3500);
     if (currentParagraph.trim().length < 8 || /[.!?。！？]["'”’\])}]*\s*$/.test(currentParagraph) || /(?:^|\s)@[^\n]*$/.test(currentParagraph)) return;
+    const version = completionVersion.current;
+    completionPoint.current = point;
     completionTimer.current = setTimeout(() => {
       const controller = new AbortController(); completionAbort.current = controller;
       void api<{text: string; verbatim?: boolean}>("/api/ai/completion", "POST", {context, requestId: crypto.randomUUID()}, controller.signal).then((result) => {
-        if (controller.signal.aborted || !result.text || JSON.stringify(editor.selection?.anchor) !== JSON.stringify(point) || !editor.api.isCollapsed()) return;
+        if (controller.signal.aborted || version !== completionVersion.current || !editor.api.isFocused() || !result.text || JSON.stringify(editor.selection?.anchor) !== JSON.stringify(point) || !editor.api.isCollapsed()) return;
         const selection = window.getSelection(); if (!selection?.rangeCount || !textSurface.current) return;
         const rect = selection.getRangeAt(0).getBoundingClientRect(); const bounds = textSurface.current.getBoundingClientRect();
         const text = result.verbatim ? result.text : /\s$/.test(context) || /^\s|^[.,!?;:]/.test(result.text) ? result.text : ` ${result.text}`;
@@ -154,7 +152,7 @@ function TextBlockEditor({ block, entity, index, onFocus, onCaret, onSlash, cont
   };
   return (
     <div ref={textSurface} className="relative" onMouseMove={onCaret}>
-      <Plate editor={editor} onSelectionChange={() => { onSelection?.(editor); if (ghost && JSON.stringify(editor.selection?.anchor) !== JSON.stringify(ghost.point)) cancelCompletion(); }} onChange={({ value }) => {
+      <Plate editor={editor} onSelectionChange={() => { onSelection?.(editor); if (completionPoint.current && (!editor.api.isCollapsed() || JSON.stringify(editor.selection?.anchor) !== JSON.stringify(completionPoint.current))) cancelCompletion(); }} onValueChange={({ value }) => {
         suggest();
         const point = editor.selection?.anchor;
         if (point && editor.api.isCollapsed()) {
@@ -174,10 +172,11 @@ function TextBlockEditor({ block, entity, index, onFocus, onCaret, onSlash, cont
           blocks: continuous ? saveDocument(get(entity.kind, entity.id)?.blocks ?? entity.blocks, value as Value, text) : entity.blocks.map((item, i) => i === index ? { ...block, text, value: value as Value } : item),
         });
       }}>
-        <PlateContent aria-label="Document text" placeholder="Write…" onFocus={() => onFocus(index, editor)}
+        <PlateContent aria-label="Document text" placeholder="Write…" onFocus={() => onFocus(index, editor)} onBlur={cancelCompletion}
           onKeyDown={(event) => {
             if (event.nativeEvent.isComposing) { cancelCompletion(); return; }
-            if (ghost && event.key === "Tab") { event.preventDefault(); const text = ghost.text; cancelCompletion(); editor.tf.insertText(text); return; }
+            if (event.key === "Tab" && (event.shiftKey || !mention || !matches[active]) && indentList(editor, event.shiftKey)) { event.preventDefault(); cancelCompletion(); return; }
+            if (ghost && event.key === "Tab" && !event.shiftKey) { event.preventDefault(); const text = ghost.text; cancelCompletion(); editor.tf.insertText(text); return; }
             if (ghost && event.key === "Escape") { event.preventDefault(); cancelCompletion(); return; }
             cancelCompletion();
             if (event.key === "@") setDismissed(false);
@@ -317,7 +316,7 @@ export function DocumentEditor({ entity, audioFirst = false }: { entity: Entity;
     if (!editor) return;
     if (selection && selectedRange.current) editor.tf.select(selectedRange.current);
     const index = selection ? editor.selection?.anchor.path[0] ?? 0 : hoveredBlock.current;
-    editor.tf.setNodes({ type: type === "bullet" || type === "numbered" ? "list-item" : type, ordered: type === "numbered" }, { at: [index] });
+    editor.tf.setNodes({ type: type === "bullet" || type === "numbered" ? "list-item" : type, ordered: type === "numbered", indent: 0 }, { at: [index] });
     editor.tf.focus();
   };
   const types = [

@@ -8,7 +8,7 @@ Licensed under the GNU Affero General Public License, version 3 (AGPL-3.0-only).
 
 ## Run locally
 
-Install Go, Bun, Just, Overmind, FFmpeg, FFprobe, and Python 3. Run `just download-models` to download SmolLM2 to `models/SmolLM2-135M.Q8_0.llamafile` if it is missing (requires curl). The prepared Whistle WASM engine and weights are checked into the repo. Run all commands from the repository root.
+Install Go, Bun, Just, Overmind, FFmpeg, FFprobe, and Python 3. Run `just download-models` to download SmolLM2 to `models/smollm2-1.7b.llamafile` if it is missing (requires curl). The prepared Whistle WASM engine and weights are checked into the repo. Run all commands from the repository root.
 
 ```sh
 cd frontend
@@ -25,7 +25,7 @@ For production, `just build` creates the frontend bundle and `bin/lyphe`. Run `.
 
 ## Local AI
 
-The backend supervises the local **SmolLM2-135M Q8_0** llamafile as one persistent HTTP process on `127.0.0.1:8081`. It uses that model for short autocomplete suggestions and transcript cleanup. Autocomplete sends writing directly to the base model’s native completion endpoint, with deterministic sampling, a 12-token limit, and repetition penalties. Suggestions preserve the generated suffix and stop at a sentence or paragraph boundary; echoed text and chat markup are discarded. The model API stays behind the backend; the browser uses authenticated application endpoints.
+The backend supervises the local **SmolLM2-1.7B-Instruct Q5_K_L** llamafile as one persistent HTTP process on `127.0.0.1:8081`. It uses that model for short autocomplete suggestions and transcript cleanup. Autocomplete uses a writing-specific instruction prompt and prefills the current paragraph through the native completion endpoint, with deterministic sampling, a 32-token limit, and repetition penalties. Run `just download-models` when upgrading from the older 135M model; update `LYPHE_LLAMAFILE` too if you set it explicitly. The model is about 1.27 GB and CPU inference needs roughly 2–3 GB of memory. Requests have an eight-second deadline; typing, moving the cursor, or leaving the editor cancels pending suggestions. Suggestions preserve the generated suffix and stop at a sentence or paragraph boundary; echoed text, word fragments, and chat markup are discarded. The model API stays behind the backend; the browser uses authenticated application endpoints.
 
 [Whistle](https://huggingface.co/Cactus-Compute/whistle) runs **inside the Go server through [wazero](https://github.com/wazero/wazero)**. One queued job runs at a time, and the WASM instance keeps its model loaded between jobs. FFmpeg converts recordings to 16 kHz mono float samples. Recordings longer than 30 seconds split at quiet boundaries between 25 and 30 seconds, with word timestamps shifted back to the original recording. Languages are English, German, French, Spanish, Italian, Dutch, and Polish; detection is automatic unless the API request specifies a language. Speech at a chunk boundary can still lose context. WASM inference can be slower than native inference; each queued job has a 60-minute processing deadline.
 
@@ -44,7 +44,7 @@ Optional environment variables:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `LYPHE_AI_ENABLED` | `true` | Set `false` to stop local AI workers. |
-| `LYPHE_LLAMAFILE` | `<repo>/models/SmolLM2-135M.Q8_0.llamafile` | Completion model executable. |
+| `LYPHE_LLAMAFILE` | `<repo>/models/smollm2-1.7b.llamafile` | Completion model executable (SmolLM2 Instruct with ChatML). |
 | `LYPHE_WHISTLE_WASM` | `<repo>/bin/whistle/needle.wasm` | Prepared core WASM transcription engine. |
 | `LYPHE_WHISTLE_MODEL` | `<repo>/bin/whistle/whistle.cact` | Whistle weights. |
 | `LYPHE_FFMPEG` | `ffmpeg` | Audio conversion executable. |
@@ -52,7 +52,7 @@ Optional environment variables:
 | `LYPHE_LLM_ADDRESS` | `127.0.0.1:8081` | Local model host and port. |
 | `VITE_PB_URL` | Development: `http://127.0.0.1:8090`; production: same origin | Frontend backend URL at build time. |
 
-The model paths can be absolute paths. Keep the model address on loopback. An unavailable model does not prevent writing or saving documents. If transcription is unavailable, check both FFmpeg tools and the Whistle engine and weights paths. Uploads are limited to 25 MiB and transcription to 30 minutes per audio file. `just download-models` downloads SmolLM2 only when its file is missing or empty and verifies the committed Whistle assets. `just download-smollm` runs only the completion model download. Audio attachments stay in PocketBase storage, while transcript text, segments, and language persist in `pb_data/data.db` alongside other application data.
+The model paths can be absolute paths. Keep the model address on loopback. An unavailable model does not prevent writing or saving documents. If transcription is unavailable, check both FFmpeg tools and the Whistle engine and weights paths. Uploads are limited to 25 MiB and transcription to 30 minutes per audio file. `just download-models` downloads the pinned SmolLM2 instruction model only when its file is missing or empty, then verifies its SHA-256 and the committed Whistle assets. `just download-smollm` runs only the completion model download. Audio attachments stay in PocketBase storage, while transcript text, segments, and language persist in `pb_data/data.db` alongside other application data.
 
 ## Data and API
 
@@ -102,7 +102,7 @@ docker run --rm --name lyphe -p 8090:8090 -v lyphe-data:/app/pb_data ghcr.io/cha
 
 The root `Dockerfile` builds the SPA, a static Go binary, the completion model, the Whistle WASM engine and weights, and the FFmpeg tools into one non-root [distroless image](https://github.com/GoogleContainerTools/distroless). The final image has no shell, package manager, Node, Bun, or Python. CPU inference is included; GPU drivers and toolchains are not included.
 
-Run `just download-models` before building to ensure `models/SmolLM2-135M.Q8_0.llamafile` is present. Docker copies the checked-in Whistle core WASM engine (about 883 KiB) and 16.9 MB weights directly, verifying both against the committed SHA-256 manifest. Only `models/SmolLM2-135M.Q8_0.llamafile` and the committed Whistle engine, weights, manifest, and upstream license from `bin` enter the build context. Other model files and logs are excluded. The final image includes FFmpeg and FFprobe with their shared libraries, and the build checks that both tools execute successfully inside the distroless image. Databases, uploads, `.env` files, and local dependency directories are excluded. The build converts a copy of llamafile to a Linux ELF executable using its embedded architecture headers. The Whistle WASM engine is identical on both server architectures. The files on your host remain unchanged.
+Run `just download-models` before building to ensure `models/smollm2-1.7b.llamafile` is present. Docker copies the checked-in Whistle core WASM engine (about 883 KiB) and 16.9 MB weights directly, verifying both against the committed SHA-256 manifest. Only `models/smollm2-1.7b.llamafile` and the committed Whistle engine, weights, manifest, and upstream license from `bin` enter the build context. Other model files and logs are excluded. The final image includes FFmpeg and FFprobe with their shared libraries, and the build checks that both tools execute successfully inside the distroless image. Databases, uploads, `.env` files, and local dependency directories are excluded. The build converts a copy of llamafile to a Linux ELF executable using its embedded architecture headers. The Whistle WASM engine is identical on both server architectures. The files on your host remain unchanged.
 
 ```sh
 docker build -t lyphe:distroless .

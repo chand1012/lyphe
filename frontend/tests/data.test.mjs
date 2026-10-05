@@ -26,3 +26,10 @@ test("dates use local calendar days", () => { assert.equal(isoDay(new Date(2026,
 test("weekly and monthly habits count one completion per calendar period", () => {
  const today = isoDay(new Date()); assert.equal(weekRate({cadence: "weekly", history: [today]}), 100); assert.equal(weekRate({cadence: "monthly", history: [today]}), 100); assert.equal(weekRate({cadence: "weekly", history: []}), 0);
 });
+
+test('journal sidebar labels use renamed titles and fall back to the date', async () => {
+ const { journalLabel } = await import('../app/lib/format.ts');
+ const date = isoDay(new Date());
+ assert.equal(journalLabel({title: 'My first entry', date}), 'My first entry');
+ for (const title of ['', 'Untitled', 'New journal']) assert.equal(journalLabel({title, date}), 'Today');
+});
