@@ -390,7 +390,7 @@ export function DocumentEditor({ entity, audioFirst = false }: { entity: Entity;
   };
 
   return (
-    <div ref={surface} className="relative" onKeyDownCapture={() => setCaret(null)} onMouseLeave={() => { if (!slash && !blockMenu) setCaret(null); }}>
+    <div ref={surface} className="relative pb-[clamp(10rem,40dvh,25rem)]" onKeyDownCapture={() => setCaret(null)} onMouseLeave={() => { if (!slash && !blockMenu) setCaret(null); }}>
       <input ref={fileInput} type="file" className="hidden" aria-label="Attach file" onChange={async (event) => {
         const files = Array.from(event.target.files ?? []); event.target.value = ""; if (!files.length) return;
         const type = mediaType.current; const editor = activeEditor.current; const selection = editor?.selection ? structuredClone(editor.selection) : null;
