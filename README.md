@@ -58,7 +58,7 @@ The model paths can be absolute paths. Keep the model address on loopback. An un
 
 Documents store versioned Plate JSON, plain searchable text, and a revision number. Mentions and inline file chips remain part of the editable document. Audio attachments sit above journal text. Files use persistent IDs and protected PocketBase URLs; temporary browser URLs are never saved.
 
-The migration retains legacy HTML descriptions and converts them when reading entries that do not yet have a JSON document. A subsequent save writes JSON. Folder membership, task status, tags, and manual relationships remain available.
+The migration retains legacy HTML descriptions and converts them when reading entries that do not yet have a JSON document. A subsequent save writes JSON. Folder membership, task status, tags, and manual relationships remain available. Unused tags are removed when their last reference is removed, when an item is permanently deleted, and on startup. Tags on soft-deleted items are kept during the undo/restore window.
 
 All application endpoints require a signed-in `users` account and enforce ownership. Metadata and document saves use optimistic revisions; a stale save returns HTTP 409. The frontend preserves the draft and offers reload or save-my-version controls. Derived file placements, mention references, and full-text search update in the same document transaction.
 

@@ -42,6 +42,12 @@ func Register(app core.App) *Server {
 		}
 		return e.Next()
 	}
+	app.OnRecordDelete("journal", "goals", "tasks", "habits").BindFunc(func(e *core.RecordEvent) error {
+		if err := e.Next(); err != nil {
+			return err
+		}
+		return pruneUnusedTags(e.App, e.Record.GetString("user"))
+	})
 	app.OnRecordCreateRequest(names...).BindFunc(guard)
 	app.OnRecordUpdateRequest(names...).BindFunc(guard)
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
@@ -62,6 +68,9 @@ func Register(app core.App) *Server {
 		r.GET("/search", s.search)
 		r.GET("/preferences", s.preferences)
 		r.PATCH("/preferences", s.updatePreferences)
+		if err := e.App.RunInTransaction(func(app core.App) error { return pruneUnusedTags(app, "") }); err != nil {
+			return err
+		}
 		if err := s.rebuildSearch(); err != nil {
 			return err
 		}
@@ -299,7 +308,13 @@ func (s *Server) patch(e *core.RequestEvent) error {
 			return err
 		}
 		r = fresh
-		return indexEntity(app, fresh)
+		if err := indexEntity(app, fresh); err != nil {
+			return err
+		}
+		if _, changed := input.Patch["tags"]; changed {
+			return pruneUnusedTags(app, e.Auth.Id)
+		}
+		return nil
 	})
 	if err != nil {
 		return response(e, err)

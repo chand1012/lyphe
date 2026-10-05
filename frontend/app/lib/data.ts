@@ -71,7 +71,7 @@ export async function connectData() { await loadData(); const user = session; if
   });
   await pb.collection("files").subscribe("*", (event) => { if (session !== user) return; if (event.action === "delete") fileRecords.delete(event.record.id); else fileRecords.set(event.record.id,event.record); emit(); });
   await pb.collection("folders").subscribe("*", () => { void pb.collection("folders").getFullList().then((rows) => { if (session !== user) return; folders.splice(0,folders.length,...rows.map((r) => r.name)); emit(); }).catch(() => {}); });
-  await pb.collection("tags").subscribe("*", () => { void pb.collection("tags").getFullList().then((rows) => { if (session !== user) return; tagNames.splice(0,tagNames.length,...rows.map((r) => r.name)); emit(); }).catch(() => {}); });
+  await pb.collection("tags").subscribe("*", () => { void pb.collection("tags").getFullList().then((rows) => { if (session !== user) return; tagNames.splice(0,tagNames.length,...rows.map((r) => r.name)); filters.tags = filters.tags.filter((tag) => tagNames.includes(tag)); emit(); }).catch(() => {}); });
   await pb.collection("transcriptions").subscribe("*", () => { void refreshJobs().catch(() => {}); });
   poll = setInterval(() => { void refreshAI(); void refreshJobs().catch(() => {}); }, 10000);
   tokenPoll = setInterval(() => { void pb.files.getToken().then((token) => { if (session !== user) return; fileToken = token; emit(); }).catch(() => {}); }, 90000);
