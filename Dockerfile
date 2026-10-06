@@ -33,19 +33,18 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -ldflags="-s -w -X github.com/chand1012/lyphe/internal/version.Version=${VERSION} -X github.com/chand1012/lyphe/internal/version.CommitHash=${COMMIT} -X github.com/chand1012/lyphe/internal/version.BuildDate=${BUILD_DATE}" \
     -o /out/lyphe .
 
-# Collect target-architecture FFmpeg/FFprobe libraries and assimilate llamafile.
+# Collect target-architecture FFmpeg/FFprobe libraries and assimilate the portable model executables.
 FROM debian:trixie-slim AS runtime-deps
 ARG TARGETARCH
 RUN case "$TARGETARCH" in amd64|arm64) ;; *) echo "Local models require amd64 or arm64" >&2; exit 1;; esac
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg python3-minimal \
     && rm -rf /var/lib/apt/lists/*
 COPY models/smollm2-1.7b.llamafile /models/smollm2-1.7b.llamafile
-COPY bin/whistle/ /models/whistle/
-COPY scripts/verify-whistle.py /verify-whistle.py
-RUN python3 /verify-whistle.py /models/whistle
+COPY models/tiny.whisperfile /models/tiny.whisperfile
+RUN echo "eb76be459038599bcaab78e01405ab6f631f4a0946b3d57f91d9aeb49e4ee545  /models/tiny.whisperfile" | sha256sum --check
 COPY docker/assimilate.py /assimilate.py
-RUN python3 /assimilate.py "$TARGETARCH" /models/smollm2-1.7b.llamafile \
-    && chmod 755 /models/smollm2-1.7b.llamafile
+RUN python3 /assimilate.py "$TARGETARCH" /models/smollm2-1.7b.llamafile /models/tiny.whisperfile \
+    && chmod 755 /models/smollm2-1.7b.llamafile /models/tiny.whisperfile
 # Copy only the tools and their shared-library closure, not a Debian installation.
 COPY docker/copy-runtime.sh /copy-runtime.sh
 RUN /bin/sh /copy-runtime.sh \
@@ -60,8 +59,7 @@ COPY --from=backend /out/lyphe /app/lyphe
 COPY --from=frontend /src/frontend/build/client/ /app/frontend/build/client/
 COPY --from=runtime-deps /models/ /app/bin/
 ENV LYPHE_LLAMAFILE=/app/bin/smollm2-1.7b.llamafile \
-    LYPHE_WHISTLE_WASM=/app/bin/whistle/needle.wasm \
-    LYPHE_WHISTLE_MODEL=/app/bin/whistle/whistle.cact \
+    LYPHE_WHISPERFILE=/app/bin/tiny.whisperfile \
     LYPHE_FFMPEG=/usr/bin/ffmpeg \
     LYPHE_FFPROBE=/usr/bin/ffprobe \
     LYPHE_LLM_ADDRESS=127.0.0.1:8081 \
@@ -70,6 +68,7 @@ USER 65532:65532
 # Exec-form checks work without a shell and catch missing runtime libraries.
 RUN ["/usr/bin/ffmpeg", "-version"]
 RUN ["/usr/bin/ffprobe", "-version"]
+RUN ["/app/bin/tiny.whisperfile", "--help"]
 EXPOSE 8090
 VOLUME ["/app/pb_data"]
 ENTRYPOINT ["/app/lyphe"]

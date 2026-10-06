@@ -37,8 +37,8 @@ type Transcript struct {
 	Language string
 }
 type Config struct {
-	Llamafile, WhistleWASM, WhistleModel, FFmpeg, FFprobe, Address string
-	Threads                                                        int
+	Llamafile, Whisperfile, FFmpeg, FFprobe, Address string
+	Threads                                          int
 }
 
 func env(key, fallback string) string {
@@ -49,7 +49,7 @@ func env(key, fallback string) string {
 }
 func DefaultConfig() Config {
 	root, _ := os.Getwd()
-	return Config{Llamafile: env("LYPHE_LLAMAFILE", filepath.Join(root, "models", "smollm2-1.7b.llamafile")), WhistleWASM: env("LYPHE_WHISTLE_WASM", filepath.Join(root, "bin", "whistle", "needle.wasm")), WhistleModel: env("LYPHE_WHISTLE_MODEL", filepath.Join(root, "bin", "whistle", "whistle.cact")), FFmpeg: env("LYPHE_FFMPEG", "ffmpeg"), FFprobe: env("LYPHE_FFPROBE", "ffprobe"), Address: env("LYPHE_LLM_ADDRESS", "127.0.0.1:8081"), Threads: max(1, min(4, runtime.NumCPU()-1))}
+	return Config{Llamafile: env("LYPHE_LLAMAFILE", filepath.Join(root, "models", "smollm2-1.7b.llamafile")), Whisperfile: env("LYPHE_WHISPERFILE", filepath.Join(root, "models", "tiny.whisperfile")), FFmpeg: env("LYPHE_FFMPEG", "ffmpeg"), FFprobe: env("LYPHE_FFPROBE", "ffprobe"), Address: env("LYPHE_LLM_ADDRESS", "127.0.0.1:8081"), Threads: max(1, min(4, runtime.NumCPU()-1))}
 }
 
 type Manager struct {
@@ -73,7 +73,7 @@ func New(app core.App, c Config) *Manager {
 	m := &Manager{App: app, Config: c, key: hex.EncodeToString(key), client: &http.Client{Timeout: 35 * time.Second}, gate: make(chan struct{}, 1)}
 	m.state.Store("starting")
 	m.Provider = m
-	m.Transcriber = &WhistleWASM{Config: c}
+	m.Transcriber = &Whisperfile{Config: c}
 	return m
 }
 func (m *Manager) Start() {

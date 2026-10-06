@@ -32,6 +32,13 @@ jobs:
             --output models/smollm2-1.7b.llamafile
           echo "$MODEL_SHA256  models/smollm2-1.7b.llamafile" | sha256sum --check
 
+      - name: Download transcription model
+        run: |
+          curl --fail --location --retry 3 \
+            https://huggingface.co/chand1012/llamafiles/resolve/45cfb53f23557235bb1c361a2fa6eea70c83cc85/tiny.whisperfile \
+            --output models/tiny.whisperfile
+          echo "eb76be459038599bcaab78e01405ab6f631f4a0946b3d57f91d9aeb49e4ee545  models/tiny.whisperfile" | sha256sum --check
+
       - name: Set build date
         id: date
         run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"

@@ -5,7 +5,9 @@ GIT_COMMIT := `git rev-parse HEAD 2>/dev/null || echo unknown`
 VERSION_TAG := `git describe --tags --abbrev=0 2>/dev/null || echo dev`
 LD_FLAGS := "-X github.com/chand1012/lyphe/internal/version.Version=" + VERSION_TAG + " -X github.com/chand1012/lyphe/internal/version.CommitHash=" + GIT_COMMIT + " -X github.com/chand1012/lyphe/internal/version.BuildDate=" + DATE
 EXEC_EXT := "" # set to `.exe` on windows
-NEEDLE_PACKAGE := "cactus-needle==3.1.0"
+WHISPER_FILE := "models/tiny.whisperfile"
+WHISPER_SHA256 := "eb76be459038599bcaab78e01405ab6f631f4a0946b3d57f91d9aeb49e4ee545"
+WHISPER_URL := "https://huggingface.co/chand1012/llamafiles/resolve/45cfb53f23557235bb1c361a2fa6eea70c83cc85/tiny.whisperfile"
 SMOLLM_FILE := "models/smollm2-1.7b.llamafile"
 SMOLLM_SHA256 := "4b147d05e65d2c1df1d808d0cedfa72666df4b2e8e4e8979388b4a334bd23ea4"
 SMOLLM_URL := "https://huggingface.co/chand1012/smollm2-1.7b.llamafile/resolve/9773366048c715ef594a2395f5d7354a1a317e73/smollm2-1.7b.llamafile"
@@ -30,8 +32,7 @@ serve-frontend:
 dev:
   overmind start
 
-download-models: download-smollm
-  python3 scripts/verify-whistle.py bin/whistle
+download-models: download-smollm download-whisper
 
 # Download through a temporary file so interruptions never leave a partial model.
 download-smollm:
@@ -48,14 +49,21 @@ download-smollm:
   echo "{{SMOLLM_SHA256}}  {{SMOLLM_FILE}}" | shasum -a 256 --check
   chmod +x "{{SMOLLM_FILE}}"
 
-# Rebuild the checked-in core engine when updating Needle.
-# Assemble the published core WASM engine for wazero (no Python at runtime).
-build-whistle:
-  mkdir -p bin/whistle
-  NEEDLE_TELEMETRY=0 DO_NOT_TRACK=1 uvx --from {{NEEDLE_PACKAGE}} needle download wasm --out bin/whistle
-  NEEDLE_TELEMETRY=0 DO_NOT_TRACK=1 uvx --from {{NEEDLE_PACKAGE}} needle download whistle --out bin/whistle
-  python3 scripts/prepare-whistle.py bin/whistle
+# Download through a temporary file so interruptions never leave a partial model.
+download-whisper:
+  #!/bin/sh
+  set -eu
+  mkdir -p models
+  if [ ! -s "{{WHISPER_FILE}}" ]; then
+    model_tmp=$(mktemp "{{WHISPER_FILE}}.XXXXXX")
+    trap 'rm -f "$model_tmp"' EXIT HUP INT TERM
+    curl --fail --location --retry 3 --output "$model_tmp" "{{WHISPER_URL}}"
+    echo "{{WHISPER_SHA256}}  $model_tmp" | shasum -a 256 --check
+    mv "$model_tmp" "{{WHISPER_FILE}}"
+  fi
+  echo "{{WHISPER_SHA256}}  {{WHISPER_FILE}}" | shasum -a 256 --check
+  chmod +x "{{WHISPER_FILE}}"
 
-verify-whistle:
-  python3 scripts/verify-whistle.py bin/whistle
-  LYPHE_WHISTLE_TEST=1 go test ./internal/ai -run TestWhistleIntegration -v
+verify-whisper:
+  echo "{{WHISPER_SHA256}}  {{WHISPER_FILE}}" | shasum -a 256 --check
+  LYPHE_WHISPER_TEST=1 go test ./internal/ai -run TestWhisperIntegration -v
