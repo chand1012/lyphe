@@ -214,6 +214,7 @@ function TextBlockEditor({ block, entity, index, onFocus, onCaret, onSlash, cont
 const slashGroups: { heading: string; items: string[] }[] = [
   { heading: "Basic", items: ["paragraph", "heading", "quote", "divider"] },
   { heading: "Personal", items: ["task", "goal", "habit"] },
+  { heading: "Links", items: ["link-task", "link-goal"] },
   { heading: "Media", items: ["image", "audio", "video", "file"] },
 ];
 
@@ -335,6 +336,7 @@ export function DocumentEditor({ entity, audioFirst = false }: { entity: Entity;
     { type: "numbered", label: "Numbered list", icon: ListOrderedIcon },
   ];
   const [slash, setSlash] = useState(false);
+  const [linkKind, setLinkKind] = useState<"task" | "goal" | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const mediaType = useRef<"image" | "audio" | "video" | "file">("file");
   useEffect(() => {
@@ -367,6 +369,10 @@ export function DocumentEditor({ entity, audioFirst = false }: { entity: Entity;
   const transcribe = async (fileId: string) => { const anchorId = reserve(); await startTranscription(entity, fileId, anchorId); };
   const insertTranscript = async (job: Job) => { const anchorId = reserve(); await applyTranscript(entity, job, anchorId); };
   const runSlash = async (type: string) => {
+    if (type === "link-task" || type === "link-goal") {
+      setLinkKind(type === "link-task" ? "task" : "goal");
+      return;
+    }
     setSlash(false);
     setCaret(null);
     if (type === "task" || type === "goal" || type === "habit") {
@@ -448,7 +454,7 @@ export function DocumentEditor({ entity, audioFirst = false }: { entity: Entity;
         onMouseEnter={cancelCaretHide}
         aria-label="Block controls"
       >
-        <Popover open={slash} onOpenChange={setSlash}>
+        <Popover open={slash} onOpenChange={(open) => { setSlash(open); setLinkKind(null); }}>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="icon" className="size-6 rounded-sm" aria-label="Insert block" title="Insert block" onClick={() => {
               const editor = activeEditor.current;
@@ -462,17 +468,30 @@ export function DocumentEditor({ entity, audioFirst = false }: { entity: Entity;
             }}><PlusIcon className="size-4" /></Button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-64 p-0">
-            <Command>
-              <CommandInput placeholder="Type a command…" />
+            <Command key={linkKind ?? "commands"}>
+              <CommandInput placeholder={linkKind ? `Search ${linkKind === "goal" ? "goals" : "tasks"}…` : "Type a command…"} />
               <CommandList>
                 <CommandEmpty>Nothing found</CommandEmpty>
-                {slashGroups.map((group) => (
+                {linkKind ? <CommandGroup heading={linkKind === "goal" ? "Link a goal" : "Link a task"}>
+                  {db[linkKind].map((item) => <CommandItem key={item.id} value={item.id} keywords={[item.title]} onSelect={() => {
+                    const editor = activeEditor.current;
+                    if (!editor) return;
+                    editor.tf.insertNodes({ type: "entity-mention", kind: item.kind, entityId: item.id, children: [{ text: "" }] });
+                    editor.tf.move({ distance: 1 });
+                    editor.tf.insertText(" ");
+                    setSlash(false);
+                    setLinkKind(null);
+                    setCaret(null);
+                    editor.tf.focus();
+                  }}>{item.title}</CommandItem>)}
+                  <CommandItem onSelect={() => setLinkKind(null)}>Back to commands</CommandItem>
+                </CommandGroup> : slashGroups.map((group) => (
                   <div key={group.heading}>
                     <CommandSeparator />
                     <CommandGroup heading={group.heading}>
                       {group.items.map((item) => (
                         <CommandItem key={item} value={item} onSelect={() => runSlash(item)}>
-                          {item === "paragraph" ? "Text" : item[0].toUpperCase() + item.slice(1)}
+                          {item === "paragraph" ? "Text" : item === "link-task" ? "Link task" : item === "link-goal" ? "Link goal" : item[0].toUpperCase() + item.slice(1)}
                         </CommandItem>
                       ))}
                     </CommandGroup>

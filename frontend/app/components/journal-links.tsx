@@ -5,14 +5,15 @@ import { Checkbox } from "~/components/ui/checkbox";
 import { Input } from "~/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/ui/popover";
 import { EntityRef } from "~/components/entity-ref";
-import { update, useDb, type Journal } from "~/lib/data";
+import { mentions, update, useDb, type Journal } from "~/lib/data";
 
 function JournalLinkPicker({ entry, kind }: { entry: Journal; kind: "goal" | "task" }) {
   const db = useDb();
   const [query, setQuery] = useState("");
   const field = kind === "goal" ? "goals" : "tasks";
   const ids = entry.related?.[field] ?? [];
-  const linked = db[kind].filter((item) => ids.includes(item.id));
+  const linked = db[kind].filter((item) => mentions(entry, kind, item.id));
+  const inline = new Set(linked.filter((item) => mentions({ ...entry, related: undefined }, kind, item.id)).map((item) => item.id));
   const options = db[kind].filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
   const toggle = (id: string) => {
     const next = ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id];
@@ -24,10 +25,10 @@ function JournalLinkPicker({ entry, kind }: { entry: Journal; kind: "goal" | "ta
     <span className="w-12 text-xs text-muted-foreground">{kind === "goal" ? "Goals" : "Tasks"}</span>
     {linked.map((item) => <span key={item.id} className="inline-flex min-w-0 max-w-full items-center gap-0.5">
       <EntityRef kind={kind} id={item.id} />
-      <Button variant="ghost" size="icon-xs" aria-label={`Unlink ${kind}: ${item.title}`} onClick={() => toggle(item.id)}><XIcon className="size-3" /></Button>
+      {!inline.has(item.id) && <Button variant="ghost" size="icon-xs" aria-label={`Unlink ${kind}: ${item.title}`} onClick={() => toggle(item.id)}><XIcon className="size-3" /></Button>}
     </span>)}
     <Popover onOpenChange={() => setQuery("")}>
-      <PopoverTrigger asChild><Button variant="ghost" size="sm">Link {field}</Button></PopoverTrigger>
+      {linked.length === 0 && <PopoverTrigger asChild><Button variant="ghost" size="sm">Link {field}</Button></PopoverTrigger>}
       <PopoverContent align="start" className="w-72 space-y-3">
         <Input aria-label={`Search ${field} to link`} placeholder={`Search ${field}…`} value={query} onChange={(event) => setQuery(event.target.value)} />
         <div className="max-h-60 space-y-2 overflow-y-auto">
@@ -44,8 +45,14 @@ function JournalLinkPicker({ entry, kind }: { entry: Journal; kind: "goal" | "ta
 }
 
 export function JournalLinks({ entry }: { entry: Journal }) {
+  const db = useDb();
+  const hasGoals = db.goal.some((goal) => mentions(entry, "goal", goal.id));
+  const hasTasks = db.task.some((task) => mentions(entry, "task", task.id));
+
+  if (!hasGoals && !hasTasks) return null;
+
   return <div className="flex flex-col gap-2" aria-label="Journal links">
-    <JournalLinkPicker key={`${entry.id}-goal`} entry={entry} kind="goal" />
-    <JournalLinkPicker key={`${entry.id}-task`} entry={entry} kind="task" />
+    {hasGoals && <JournalLinkPicker key={`${entry.id}-goal`} entry={entry} kind="goal" />}
+    {hasTasks && <JournalLinkPicker key={`${entry.id}-task`} entry={entry} kind="task" />}
   </div>;
 }
