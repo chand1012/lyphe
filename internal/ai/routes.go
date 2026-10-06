@@ -44,15 +44,14 @@ func owned(app core.App, table, id, user string) (*core.Record, error) {
 	return r, nil
 }
 func (m *Manager) status(e *core.RequestEvent) error {
-	_, werr := os.Stat(m.Config.WhistleWASM)
-	_, merr := os.Stat(m.Config.WhistleModel)
+	info, werr := os.Stat(m.Config.Whisperfile)
 	_, ferr := exec.LookPath(m.Config.FFmpeg)
 	_, perr := exec.LookPath(m.Config.FFprobe)
 	settings, err := backend.Preferences(e.App, e.Auth.Id)
 	if err != nil {
 		return e.BadRequestError("Preferences unavailable", nil)
 	}
-	return e.JSON(200, map[string]any{"completion": map[string]any{"state": m.state.Load(), "available": m.ready.Load(), "provider": "local"}, "transcription": map[string]any{"available": werr == nil && merr == nil && ferr == nil && perr == nil && m.cancel != nil, "provider": "whistle-wazero"}, "preferences": settings})
+	return e.JSON(200, map[string]any{"completion": map[string]any{"state": m.state.Load(), "available": m.ready.Load(), "provider": "local"}, "transcription": map[string]any{"available": werr == nil && info.Mode().IsRegular() && info.Size() > 0 && ferr == nil && perr == nil && m.cancel != nil, "provider": "whisperfile"}, "preferences": settings})
 }
 func (m *Manager) completion(e *core.RequestEvent) error {
 	var input struct {
@@ -104,8 +103,8 @@ func (m *Manager) enqueue(e *core.RequestEvent) error {
 	if err := e.BindBody(&input); err != nil {
 		return e.BadRequestError("Invalid request", nil)
 	}
-	if !validWhistleLanguage(input.Language) {
-		return e.BadRequestError("Whistle supports en, de, fr, es, it, nl and pl", nil)
+	if !validWhisperLanguage(input.Language) {
+		return e.BadRequestError("Unsupported Whisper language code", nil)
 	}
 	table, ok := tables[input.Kind]
 	if !ok || len(input.RequestKey) < 8 || len(input.RequestKey) > 100 {

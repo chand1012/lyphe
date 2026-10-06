@@ -104,7 +104,7 @@ func TestApplyTranscriptProtectsEditedAnchorAndIsIdempotent(t *testing.T) {
 type savedTranscriptProvider struct{}
 
 func (savedTranscriptProvider) Transcribe(context.Context, string, string) (Transcript, error) {
-	return Transcript{Text: "Hello from Whistle.", Language: "en", Segments: []any{map[string]any{"text": "Hello from Whistle.", "start": 0, "end": 1}}}, nil
+	return Transcript{Text: "Hello from Whisper.", Language: "en", Segments: []any{map[string]any{"text": "Hello from Whisper.", "start": 0, "end": 1}}}, nil
 }
 
 func TestProcessPersistsTranscriptAcrossRestart(t *testing.T) {
@@ -167,7 +167,7 @@ func TestProcessPersistsTranscriptAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.GetString("status") != "completed" || stored.GetString("raw_text") != "Hello from Whistle." || stored.GetString("cleaned_text") != "Hello from Whistle." || stored.GetString("language") != "en" || len(stored.Get("segments").(types.JSONRaw)) == 0 {
+	if stored.GetString("status") != "completed" || stored.GetString("raw_text") != "Hello from Whisper." || stored.GetString("cleaned_text") != "Hello from Whisper." || stored.GetString("language") != "en" || len(stored.Get("segments").(types.JSONRaw)) == 0 {
 		t.Fatalf("transcript did not persist: %+v", stored.PublicExport())
 	}
 	fs, err := restarted.NewFilesystem()

@@ -9,7 +9,6 @@ require (
 	github.com/pocketbase/dbx v1.12.0
 	github.com/pocketbase/pocketbase v0.40.4
 	github.com/spf13/cobra v1.10.2
-	github.com/tetratelabs/wazero v1.12.0
 	golang.org/x/net v0.59.0
 )
 

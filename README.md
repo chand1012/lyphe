@@ -8,7 +8,7 @@ Licensed under the GNU Affero General Public License, version 3 (AGPL-3.0-only).
 
 ## Run locally
 
-Install Go, Bun, Just, Overmind, FFmpeg, FFprobe, and Python 3. Run `just download-models` to download SmolLM2 to `models/smollm2-1.7b.llamafile` if it is missing (requires curl). The prepared Whistle WASM engine and weights are checked into the repo. Run all commands from the repository root.
+Install Go, Bun, Just, Overmind, FFmpeg, and FFprobe. Run `just download-models` to download SmolLM2 to `models/smollm2-1.7b.llamafile` if it is missing (requires curl). The same command downloads Whisper tiny from `chand1012/llamafiles` to `models/tiny.whisperfile`. Run all commands from the repository root.
 
 ```sh
 cd frontend
@@ -27,13 +27,14 @@ For production, `just build` creates the frontend bundle and `bin/lyphe`. Run `.
 
 The backend supervises the local **SmolLM2-1.7B-Instruct Q5_K_L** llamafile as one persistent HTTP process on `127.0.0.1:8081`. It uses that model for short autocomplete suggestions and transcript cleanup. Autocomplete uses a writing-specific instruction prompt and prefills the current paragraph through the native completion endpoint, with deterministic sampling, a 32-token limit, and repetition penalties. Run `just download-models` when upgrading from the older 135M model; update `LYPHE_LLAMAFILE` too if you set it explicitly. The model is about 1.27 GB and CPU inference needs roughly 2–3 GB of memory. Requests have an eight-second deadline; typing, moving the cursor, or leaving the editor cancels pending suggestions. Suggestions preserve the generated suffix and stop at a sentence or paragraph boundary; echoed text, word fragments, and chat markup are discarded. The model API stays behind the backend; the browser uses authenticated application endpoints.
 
-[Whistle](https://huggingface.co/Cactus-Compute/whistle) runs **inside the Go server through [wazero](https://github.com/wazero/wazero)**. One queued job runs at a time, and the WASM instance keeps its model loaded between jobs. FFmpeg converts recordings to 16 kHz mono float samples. Recordings longer than 30 seconds split at quiet boundaries between 25 and 30 seconds, with word timestamps shifted back to the original recording. Languages are English, German, French, Spanish, Italian, Dutch, and Polish; detection is automatic unless the API request specifies a language. Speech at a chunk boundary can still lose context. WASM inference can be slower than native inference; each queued job has a 60-minute processing deadline.
+[Whisper tiny](https://huggingface.co/chand1012/llamafiles/blob/45cfb53f23557235bb1c361a2fa6eea70c83cc85/tiny.whisperfile) runs locally through `tiny.whisperfile`, which bundles the multilingual quantized model and native inference engine. One queued job runs at a time. Each job starts the executable, loads the model, and exits when transcription finishes. FFmpeg converts recordings to 16 kHz mono 16-bit WAV; Whisper handles long recordings and returns segment timestamps and the detected language. Detection is automatic unless the API request specifies a supported Whisper language code. Each queued job has a 60-minute processing deadline.
 
 ```sh
-just verify-whistle
+just download-whisper
+just verify-whisper
 ```
 
-The optional `just build-whistle` recipe uses `uvx --from cactus-needle==3.1.0 needle` to download the official core WASM engine and `whistle.cact`. `scripts/prepare-whistle.py` adapts the engine's minified Emscripten import/export names to the C API and WASI Preview 1 names used by Go, and writes a SHA-256 manifest. The published `wasm-component` target uses WASI Preview 2 and cannot load directly in wazero. This is an adaptation of the published core engine; upstream does not publish its C++ build source in the Needle Python repository. Python, uv, JavaScript, and Node are not needed for inference. The guest has no mounted filesystem or network access; Go supplies model and audio bytes and persists results.
+The download is pinned to revision `45cfb53f23557235bb1c361a2fa6eea70c83cc85` in `chand1012/llamafiles` and verified with SHA-256. No Python, WASM runtime, or separate transcription model service is needed for inference.
 
 Finishing a recording saves it and starts transcription when enabled. Uploaded audio has an explicit Transcribe action. Raw text, segments, detected language, processing status, and cleanup result are stored. Cleanup only accepts punctuation, capitalization, spacing, and adjacent repetition changes; other word changes fall back to the original transcript. Autocomplete accepts with Tab and dismisses with Escape. All AI controls are in Settings.
 
@@ -45,14 +46,13 @@ Optional environment variables:
 | --- | --- | --- |
 | `LYPHE_AI_ENABLED` | `true` | Set `false` to stop local AI workers. |
 | `LYPHE_LLAMAFILE` | `<repo>/models/smollm2-1.7b.llamafile` | Completion model executable (SmolLM2 Instruct with ChatML). |
-| `LYPHE_WHISTLE_WASM` | `<repo>/bin/whistle/needle.wasm` | Prepared core WASM transcription engine. |
-| `LYPHE_WHISTLE_MODEL` | `<repo>/bin/whistle/whistle.cact` | Whistle weights. |
+| `LYPHE_WHISPERFILE` | `<repo>/models/tiny.whisperfile` | Whisper tiny executable with bundled weights. |
 | `LYPHE_FFMPEG` | `ffmpeg` | Audio conversion executable. |
 | `LYPHE_FFPROBE` | `ffprobe` | Audio duration check executable. |
 | `LYPHE_LLM_ADDRESS` | `127.0.0.1:8081` | Local model host and port. |
 | `VITE_PB_URL` | Development: `http://127.0.0.1:8090`; production: same origin | Frontend backend URL at build time. |
 
-The model paths can be absolute paths. Keep the model address on loopback. An unavailable model does not prevent writing or saving documents. If transcription is unavailable, check both FFmpeg tools and the Whistle engine and weights paths. Uploads are limited to 25 MiB and transcription to 30 minutes per audio file. `just download-models` downloads the pinned SmolLM2 instruction model only when its file is missing or empty, then verifies its SHA-256 and the committed Whistle assets. `just download-smollm` runs only the completion model download. Audio attachments stay in PocketBase storage, while transcript text, segments, and language persist in `pb_data/data.db` alongside other application data.
+The model paths can be absolute paths. Keep the model address on loopback. An unavailable model does not prevent writing or saving documents. If transcription is unavailable, check both FFmpeg tools and the whisperfile path. Uploads are limited to 25 MiB and transcription to 30 minutes per audio file. `just download-models` downloads both pinned models only when their files are missing or empty, then verifies their SHA-256 checksums. `just download-smollm` runs only the completion model download. Audio attachments stay in PocketBase storage, while transcript text, segments, and language persist in `pb_data/data.db` alongside other application data.
 
 ## Data and API
 
@@ -93,16 +93,16 @@ The Go tests use temporary data directories. Development and production use the 
 
 ## Single-image Docker deployment
 
-GitHub Actions builds and publishes `ghcr.io/chand1012/lyphe` for Linux `amd64` and `arm64` on every push to `main`, on `v*` tags, and through manual workflow runs. Use `ghcr.io/chand1012/lyphe:latest` for the current main branch or `sha-<full-commit-sha>` for a specific build. Release tags are also published as image tags. The workflow downloads and verifies the completion model and uses the committed Whistle assets.
+GitHub Actions builds and publishes `ghcr.io/chand1012/lyphe` for Linux `amd64` and `arm64` on every push to `main`, on `v*` tags, and through manual workflow runs. Use `ghcr.io/chand1012/lyphe:latest` for the current main branch or `sha-<full-commit-sha>` for a specific build. Release tags are also published as image tags. The workflow downloads and verifies both the completion model and Whisper tiny from `chand1012/llamafiles`.
 
 ```sh
 docker pull ghcr.io/chand1012/lyphe:latest
 docker run --rm --name lyphe -p 8090:8090 -v lyphe-data:/app/pb_data ghcr.io/chand1012/lyphe:latest
 ```
 
-The root `Dockerfile` builds the SPA, a static Go binary, the completion model, the Whistle WASM engine and weights, and the FFmpeg tools into one non-root [distroless image](https://github.com/GoogleContainerTools/distroless). The final image has no shell, package manager, Node, Bun, or Python. CPU inference is included; GPU drivers and toolchains are not included.
+The root `Dockerfile` builds the SPA, a static Go binary, the completion model, the Whisper tiny executable, and the FFmpeg tools into one non-root [distroless image](https://github.com/GoogleContainerTools/distroless). The final image has no shell, package manager, Node, Bun, or Python. CPU inference is included; GPU drivers and toolchains are not included.
 
-Run `just download-models` before building to ensure `models/smollm2-1.7b.llamafile` is present. Docker copies the checked-in Whistle core WASM engine (about 883 KiB) and 16.9 MB weights directly, verifying both against the committed SHA-256 manifest. Only `models/smollm2-1.7b.llamafile` and the committed Whistle engine, weights, manifest, and upstream license from `bin` enter the build context. Other model files and logs are excluded. The final image includes FFmpeg and FFprobe with their shared libraries, and the build checks that both tools execute successfully inside the distroless image. Databases, uploads, `.env` files, and local dependency directories are excluded. The build converts a copy of llamafile to a Linux ELF executable using its embedded architecture headers. The Whistle WASM engine is identical on both server architectures. The files on your host remain unchanged.
+Run `just download-models` before building to ensure both model executables are present. Docker copies `models/smollm2-1.7b.llamafile` and `models/tiny.whisperfile`, verifying the whisperfile checksum before packaging. Other model files and logs are excluded. The final image includes FFmpeg and FFprobe with their shared libraries, and the build checks that both tools execute successfully inside the distroless image. Databases, uploads, `.env` files, and local dependency directories are excluded. The build converts copies of both portable model executables to Linux ELF executables using their embedded architecture headers. The files on your host remain unchanged.
 
 ```sh
 docker build -t lyphe:distroless .
@@ -124,7 +124,7 @@ docker run --rm --name lyphe --user "$(id -u):$(id -g)" -p 8090:8090 \
   lyphe:distroless
 ```
 
-Open http://localhost:8090 for both the app and API. Do not mount `bin/pb_data`. Model HTTP stays inside the container on loopback; only port 8090 is exposed. Whistle runs within the Go process and keeps its model loaded. Stop with `docker stop lyphe`; the Go application receives the termination signal directly and shuts down its model workers.
+Open http://localhost:8090 for both the app and API. Do not mount `bin/pb_data`. Model HTTP stays inside the container on loopback; only port 8090 is exposed. Whisper tiny runs as a local subprocess for each queued transcription. Stop with `docker stop lyphe`; the Go application receives the termination signal directly and shuts down its model workers.
 
 The Dockerfile supports Linux `amd64` and `arm64`. To target an architecture explicitly, use `docker buildx build --platform linux/amd64 --load -t lyphe:distroless .` (or `linux/arm64`). Optional build arguments are `GO_VERSION`, `BUN_VERSION`, `VERSION`, `COMMIT`, and `BUILD_DATE`. Model sizes dominate the image size. Keep `/tmp` writable for audio conversion and model scratch files; the persistent data directory is `/app/pb_data`.
 
